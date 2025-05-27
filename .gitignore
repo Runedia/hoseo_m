@@ -2,7 +2,8 @@
 /node_modules
 /package-lock.json
 .env.*
-download
+download_notice
+download_menu
 *.log
 trash
 logs

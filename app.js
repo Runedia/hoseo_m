@@ -4,6 +4,7 @@ const cors = require("cors");
 
 var noticeRouter = require("./routes/notice");
 var shuttleRouter = require("./routes/shuttle");
+var menuRouter = require("./routes/menu");
 
 var app = express();
 app.use(logger("dev"));
@@ -14,6 +15,7 @@ app.use("/download", express.static("download"));
 
 app.use("/notice", noticeRouter);
 app.use("/shuttle", shuttleRouter);
+app.use("/menu", menuRouter);
 
 // 404 핸들링
 app.use(function (req, res, next) {

@@ -8,7 +8,7 @@ const pool = require("@root/utils/db");
 const logger = require("@root/utils/logger");
 
 const BASE_URL = "https://www.hoseo.ac.kr";
-const DOWNLOAD_ROOT = path.resolve(process.cwd(), "download_notice");
+const DOWNLOAD_ROOT = path.resolve(process.cwd(), "download_menu");
 const headers = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
@@ -57,7 +57,7 @@ async function downloadFile(fileUrl, destPath) {
 
 // 파일 다운로드 + DB 저장
 async function downloadFileAndSaveDB(
-  noticeNum,
+  menuNum,
   fileType,
   fileUrl,
   originName,
@@ -76,9 +76,9 @@ async function downloadFileAndSaveDB(
   // 파일 다운로드
   await downloadFile(fileUrl, localFilePath);
 
-  // DB 저장(tbl_noticefile)
+  // DB 저장(tbl_menufile)
   await pool.execute(
-    `INSERT INTO tbl_noticefile (notice_num, file_type, file_name, origin_name, file_path, file_url)
+    `INSERT INTO tbl_menufile (menu_num, file_type, file_name, origin_name, file_path, file_url)
      VALUES (?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE 
      file_type = VALUES(file_type),
@@ -86,7 +86,7 @@ async function downloadFileAndSaveDB(
      origin_name = VALUES(origin_name),
      file_path = VALUES(file_path),
      file_url = VALUES(file_url)`,
-    [noticeNum, fileType, filenameSafe, originName, urlPath, fileUrl]
+    [menuNum, fileType, filenameSafe, originName, urlPath, fileUrl]
   );
 
   return {
@@ -198,15 +198,11 @@ async function processImages($, boardElement, chidx, downloadDir) {
   return assets;
 }
 
-// 공지사항 다운로드 상태 업데이트
-async function updateNoticeDownloadStatus(
-  chidx,
-  isSuccess,
-  errorMessage = null
-) {
+// 메뉴 다운로드 상태 업데이트
+async function updateMenuDownloadStatus(chidx, isSuccess, errorMessage = null) {
   try {
     await pool.execute(
-      `UPDATE tbl_notice 
+      `UPDATE TBL_Menu 
        SET download_completed = ?, 
            download_date = NOW(),
            download_error = ?
@@ -218,10 +214,10 @@ async function updateNoticeDownloadStatus(
   }
 }
 
-// 통합 공지사항 처리 함수
-async function parseAndSaveNotice(chidx) {
+// 통합 메뉴 처리 함수
+async function parseAndSaveMenu(chidx, action) {
   try {
-    const url = `${BASE_URL}/Home/BBSView.mbz?action=MAPP_1708240139&schIdx=${chidx}`;
+    const url = `${BASE_URL}/Home/BBSView.mbz?action=${action}&schIdx=${chidx}`;
     const { data: html } = await axios.get(url, { headers });
     const $ = cheerio.load(html);
 
@@ -237,38 +233,29 @@ async function parseAndSaveNotice(chidx) {
 
     if (!boardContent.length) {
       logger.warn(`본문 영역을 찾을 수 없음 [${chidx}]`);
-      await updateNoticeDownloadStatus(
-        chidx,
-        false,
-        "본문 영역을 찾을 수 없음"
-      );
+      await updateMenuDownloadStatus(chidx, false, "본문 영역을 찾을 수 없음");
       throw new Error("본문 영역을 찾을 수 없습니다.");
     }
 
     logger.info(`📥 처리 시작 [${chidx}]`);
 
     // 저장 디렉토리 생성
-    const noticeDownloadDir = path.join(DOWNLOAD_ROOT, String(chidx));
-    await fs.ensureDir(noticeDownloadDir);
+    const menuDownloadDir = path.join(DOWNLOAD_ROOT, String(chidx));
+    await fs.ensureDir(menuDownloadDir);
 
     // 첨부파일 처리
     console.log(`[${chidx}] 첨부파일 처리 중...`);
-    const attachments = await processAttachments($, chidx, noticeDownloadDir);
+    const attachments = await processAttachments($, chidx, menuDownloadDir);
 
     // 이미지 처리 (HTML 수정 포함)
     console.log(`[${chidx}] 이미지 처리 중...`);
-    const assets = await processImages(
-      $,
-      boardContent,
-      chidx,
-      noticeDownloadDir
-    );
+    const assets = await processImages($, boardContent, chidx, menuDownloadDir);
 
     // HTML 정리: 불필요한 요소 제거
     boardContent.find("dt.no-print").remove();
 
     // HTML 파일 저장 (수정된 이미지 경로 포함)
-    const htmlFilePath = path.join(noticeDownloadDir, `${chidx}.html`);
+    const htmlFilePath = path.join(menuDownloadDir, `${chidx}.html`);
     await fs.writeFile(htmlFilePath, boardContent.html(), {
       encoding: "utf-8",
     });
@@ -276,12 +263,12 @@ async function parseAndSaveNotice(chidx) {
     // JSON 메타데이터 저장
     const jsonResult = {
       schIdx: chidx,
-      content: `download_notice/${chidx}/${chidx}.html`,
+      content: `download_menu/${chidx}/${chidx}.html`,
       assets: assets,
       attachments: attachments,
     };
 
-    const jsonFilePath = path.join(noticeDownloadDir, `${chidx}_detail.json`);
+    const jsonFilePath = path.join(menuDownloadDir, `${chidx}_detail.json`);
     await fs.writeFile(
       jsonFilePath,
       JSON.stringify(jsonResult, null, 2),
@@ -289,7 +276,7 @@ async function parseAndSaveNotice(chidx) {
     );
 
     // DB에 완료 상태 업데이트
-    await updateNoticeDownloadStatus(chidx, true);
+    await updateMenuDownloadStatus(chidx, true);
 
     console.log(
       `[${chidx}] ✅ 완료: HTML(${assets.length}개 이미지), JSON, ${attachments.length}개 첨부파일, DB 저장`
@@ -299,7 +286,7 @@ async function parseAndSaveNotice(chidx) {
   } catch (err) {
     console.error(`[${chidx}] ❌ 에러:`, err.message);
     // 실패 상태도 DB에 기록
-    await updateNoticeDownloadStatus(chidx, false, err.message);
+    await updateMenuDownloadStatus(chidx, false, err.message);
     throw err;
   }
 }
@@ -307,37 +294,37 @@ async function parseAndSaveNotice(chidx) {
 // 메인 실행 함수
 async function main() {
   try {
-    // DB에서 아직 다운로드되지 않은 공지사항 목록 가져오기
+    // DB에서 아직 다운로드되지 않은 메뉴 목록 가져오기
     const sql = `
-      SELECT chidx FROM tbl_notice 
+      SELECT chidx, type FROM TBL_Menu 
       WHERE download_completed IS NULL OR download_completed = 0 
       ORDER BY chidx DESC 
       LIMIT 10
     `;
 
     const [result] = await pool.query(sql);
-    const chidxList = result.map((r) => r.chidx);
+    const menuList = result.map((r) => ({ chidx: r.chidx, action: r.type }));
 
-    console.log(`총 ${chidxList.length}개의 공지사항을 처리합니다.`);
+    console.log(`총 ${menuList.length}개의 메뉴를 처리합니다.`);
 
-    if (chidxList.length === 0) {
-      console.log("처리할 공지사항이 없습니다.");
+    if (menuList.length === 0) {
+      console.log("처리할 메뉴가 없습니다.");
       return;
     }
 
-    // chidx별로 공지 상세 크롤링/파싱
+    // 메뉴별로 상세 크롤링/파싱
     let successCount = 0;
     let failCount = 0;
 
-    for (const chidx of chidxList) {
+    for (const menu of menuList) {
       try {
-        await parseAndSaveNotice(chidx);
+        await parseAndSaveMenu(menu.chidx, menu.action);
         successCount++;
 
         // 요청 간격 조절 (서버 부하 방지)
         await new Promise((resolve) => setTimeout(resolve, 1000));
       } catch (e) {
-        console.error(`❌ chidx=${chidx} 처리 실패:`, e.message);
+        console.error(`❌ chidx=${menu.chidx} 처리 실패:`, e.message);
         failCount++;
       }
     }
@@ -359,6 +346,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  parseAndSaveNotice,
+  parseAndSaveMenu,
   main,
 };
