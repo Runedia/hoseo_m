@@ -3,6 +3,7 @@ var logger = require("morgan");
 const cors = require("cors");
 
 var noticeRouter = require("./routes/notice");
+var shuttleRouter = require("./routes/shuttle");
 
 var app = express();
 app.use(logger("dev"));
@@ -12,6 +13,7 @@ app.use(cors({ origin: "http://rukeras.com" }));
 app.use("/download", express.static("download"));
 
 app.use("/notice", noticeRouter);
+app.use("/shuttle", shuttleRouter);
 
 // 404 핸들링
 app.use(function (req, res, next) {

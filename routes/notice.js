@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require("../utils/db");
 const fs = require("fs");
 const path = require("path");
+const { parseAndSaveNotice } = require("../process/1_notice/get_notice_detail"); // 크롤러 함수 import
 
 // 공지 목록 (페이징)
 router.get("/list", async (req, res) => {
@@ -30,28 +31,50 @@ router.get("/list", async (req, res) => {
   }
 });
 
-// 공지 상세 (본문/파일)
+// 공지 상세 (본문/파일) - 자동 다운로드 기능 추가
 router.get("/idx/:chidx", async (req, res) => {
   const { chidx } = req.params;
   const sql = `SELECT * FROM tbl_notice WHERE chidx = ? LIMIT 1`;
+
   try {
     const [notices] = await pool.execute(sql, [chidx]);
-    if (notices.length === 0)
-      return res.status(404).json({ error: "not found" });
+    if (notices.length === 0) {
+      return res.status(404).json({ error: "공지사항을 찾을 수 없습니다." });
+    }
 
-    // detail json 불러오기
+    // detail json 파일 확인
+    const jsonPath = path.join(
+      __dirname,
+      "..",
+      "download",
+      String(chidx),
+      `${chidx}_detail.json`
+    );
+
     let content = null;
+    let shouldDownload = false;
+
     try {
-      const jsonPath = path.join(
-        __dirname,
-        "..",
-        "download",
-        String(chidx),
-        `${chidx}_detail.json`
-      );
       content = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
     } catch (e) {
-      /* not found: content=null */
+      // JSON 파일이 없으면 다운로드 필요
+      shouldDownload = true;
+    }
+
+    // 다운로드가 필요한 경우 실행
+    if (shouldDownload) {
+      try {
+        console.log(`🔄 [${chidx}] 세부 내용 다운로드 시작...`);
+        content = await parseAndSaveNotice(chidx);
+        console.log(`✅ [${chidx}] 세부 내용 다운로드 완료`);
+
+        // ✅ JSON 저장 이후 다시 DB에서 최신 상태 조회
+        const [updated] = await pool.execute(sql, [chidx]);
+        if (updated.length > 0) notices[0] = updated[0];
+      } catch (downloadError) {
+        console.error(`❌ [${chidx}] 다운로드 실패:`, downloadError.message);
+        content = null;
+      }
     }
 
     // 첨부파일 조회
@@ -64,7 +87,9 @@ router.get("/idx/:chidx", async (req, res) => {
     res.json({
       ...notices[0],
       content: content ? content.content : null,
-      attachments: files,
+      assets: content ? content.assets : [],
+      attachments: content ? content.attachments : files, // JSON이 있으면 JSON 데이터, 없으면 DB 데이터
+      isDownloaded: content !== null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

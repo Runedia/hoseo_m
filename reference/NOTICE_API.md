@@ -60,6 +60,13 @@ GET http://rukeras.com:3000/notice/idx/12345
   "author": "작성자",
   "create_dt": "2023-01-01T00:00:00.000Z",
   "content": "공지사항 상세 내용...",
+  "assets": [
+    {
+      "type": "image",
+      "url": "http://example.com/image.jpg",
+      "alt": "이미지 설명"
+    }
+  ],
   "attachments": [
     {
       "file_type": "pdf",
@@ -68,7 +75,8 @@ GET http://rukeras.com:3000/notice/idx/12345
       "file_path": "/path/to/file",
       "file_url": "http://rukeras.com:3000/files/file123.pdf"
     }
-  ]
+  ],
+  "isDownloaded": true
 }
 ```
 
@@ -132,7 +140,7 @@ GET http://rukeras.com:3000/notice/types
 ---
 
 ## 공지 검색
-제목, 작성자, 카테고리로 공지사항을 검색합니다.
+제목, 작성자, 카테고리로 공지사항을 검색합니다. 모든 검색 조건은 AND 연산으로 결합되며, 검색어가 없는 경우 해당 조건은 무시됩니다.
 
 - **GET** `http://rukeras.com:3000/notice/search`
 - **Query Parameters:**
@@ -180,3 +188,5 @@ GET http://rukeras.com:3000/notice/search?title=테스트&author=홍길동&type=
 - 모든 날짜는 ISO 8601 형식(UTC)으로 반환됩니다.
 - 페이징 파라미터를 지정하지 않으면 기본값이 적용됩니다.
 - 검색 시 여러 조건을 조합하여 사용할 수 있습니다.
+- `/notice/idx/{chidx}` 엔드포인트는 최초 요청 시 자동으로 공지사항 상세 내용을 다운로드하여 저장합니다.
+- `isDownloaded` 필드는 해당 공지사항의 상세 내용이 로컬에 다운로드되어 있는지 여부를 나타냅니다.

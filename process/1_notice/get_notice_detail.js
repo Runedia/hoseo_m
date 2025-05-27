@@ -3,11 +3,11 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const fs = require("fs-extra");
 const path = require("path");
-const pool = require("../utils/db"); // DB 연결 pool
-const logger = require("../utils/logger"); // Winston 로거
+const pool = require("../../utils/db"); // DB 연결 pool
+const logger = require("../../utils/logger"); // Winston 로거
 
 const BASE_URL = "https://www.hoseo.ac.kr";
-const DOWNLOAD_ROOT = path.join(__dirname, "download");
+const DOWNLOAD_ROOT = path.resolve(process.cwd(), "download");
 const headers = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
@@ -67,7 +67,7 @@ async function downloadFileAndSaveDB(
     fileType === "image" ? ".jpg" : ".pdf"
   );
   const localFilePath = path.join(downloadDir, filenameSafe);
-  const relativeFilePath = path.relative(__dirname, localFilePath);
+  const relativeFilePath = path.relative(process.cwd(), localFilePath);
 
   // URL용 경로 (슬래시로 변환)
   const urlPath = relativeFilePath.replace(/\\/g, "/");
@@ -213,7 +213,7 @@ async function updateNoticeDownloadStatus(
       [isSuccess ? 1 : 0, errorMessage, chidx]
     );
   } catch (e) {
-    logger.error(`[${chidx}] DB 상태 업데이트 실패: ${e.message}`);
+    logger.error(`DB 상태 업데이트 실패 [${chidx}]: ${e.message}`);
   }
 }
 
@@ -235,7 +235,7 @@ async function parseAndSaveNotice(chidx) {
     }
 
     if (!boardContent.length) {
-      logger.warn(`[${chidx}] 본문 영역을 찾을 수 없습니다.`);
+      logger.warn(`본문 영역을 찾을 수 없음 [${chidx}]`);
       await updateNoticeDownloadStatus(
         chidx,
         false,
@@ -244,7 +244,7 @@ async function parseAndSaveNotice(chidx) {
       throw new Error("본문 영역을 찾을 수 없습니다.");
     }
 
-    logger.info(`[${chidx}] 처리 시작...`);
+    logger.info(`📥 처리 시작 [${chidx}]`);
 
     // 저장 디렉토리 생성
     const noticeDownloadDir = path.join(DOWNLOAD_ROOT, String(chidx));
