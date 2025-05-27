@@ -1,6 +1,8 @@
+require("module-alias/register");
+
 const axios = require("axios");
 const cheerio = require("cheerio");
-const pool = require("../../utils/db");
+const pool = require("@root/utils/db");
 
 // 탭 이름과 schCategorycode 매핑
 const TAB_CODES = {

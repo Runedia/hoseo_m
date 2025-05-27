@@ -1,5 +1,0 @@
-{
-  "ignore": ["logs/*", "download/*", ".history", "node_modules/*"],
-  "watch": ["."],
-  "exec": "node ./bin/www"
-}

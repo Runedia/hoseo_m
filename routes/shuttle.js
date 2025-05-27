@@ -56,7 +56,7 @@ const loadAllScheduleData = () => {
       const cacheKey = `${route}_${dayType}`;
 
       try {
-        const dataPath = path.join(__dirname, "../assets", fileName);
+        const dataPath = path.join(process.cwd(), "assets", fileName);
         const rawData = fs.readFileSync(dataPath, "utf8");
         const jsonData = JSON.parse(rawData);
 

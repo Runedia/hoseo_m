@@ -4,7 +4,7 @@ require("winston-daily-rotate-file");
 const path = require("path");
 
 // 로그 디렉토리 생성
-const logDir = path.join(__dirname, "../logs");
+const logDir = path.join(process.cwd(), "logs");
 require("fs").mkdirSync(logDir, { recursive: true });
 
 // 로그 포맷 정의

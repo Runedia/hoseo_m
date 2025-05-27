@@ -44,8 +44,7 @@ router.get("/idx/:chidx", async (req, res) => {
 
     // detail json 파일 확인
     const jsonPath = path.join(
-      __dirname,
-      "..",
+      process.cwd(),
       "download",
       String(chidx),
       `${chidx}_detail.json`
