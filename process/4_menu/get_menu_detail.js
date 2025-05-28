@@ -214,8 +214,8 @@ async function updateMenuDownloadStatus(chidx, isSuccess, errorMessage = null) {
   }
 }
 
-// 통합 메뉴 처리 함수
-async function parseAndSaveMenu(chidx, action) {
+// 캠퍼스 내 일반 식당 메뉴 처리 함수
+async function parseAndSaveCampusMenu(chidx, action) {
   try {
     const url = `${BASE_URL}/Home/BBSView.mbz?action=${action}&schIdx=${chidx}`;
     const { data: html } = await axios.get(url, { headers });
@@ -291,8 +291,8 @@ async function parseAndSaveMenu(chidx, action) {
   }
 }
 
-// 메인 실행 함수
-async function main() {
+// 캠퍼스 내 일반 식당 메뉴 스크래퍼 실행 함수
+async function runGeneralMenuScraper() {
   try {
     // DB에서 아직 다운로드되지 않은 메뉴 목록 가져오기
     const sql = `
@@ -318,7 +318,7 @@ async function main() {
 
     for (const menu of menuList) {
       try {
-        await parseAndSaveMenu(menu.chidx, menu.action);
+        await parseAndSaveCampusMenu(menu.chidx, menu.action);
         successCount++;
 
         // 요청 간격 조절 (서버 부하 방지)
@@ -342,10 +342,10 @@ async function main() {
 
 // 실행
 if (require.main === module) {
-  main();
+  runGeneralMenuScraper();
 }
 
 module.exports = {
-  parseAndSaveMenu,
-  main,
+  parseAndSaveCampusMenu,
+  runGeneralMenuScraper,
 };

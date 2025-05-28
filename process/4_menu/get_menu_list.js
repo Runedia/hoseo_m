@@ -4,13 +4,11 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const pool = require("@root/utils/db");
 
-// 탭 이름과 action 매핑 (menu.html 기준)
+// 탭 이름과 action 매핑
 const TAB_ACTIONS = {
   천안: "MAPP_2312012408",
   아산: "MAPP_2312012409",
   당진: "MAPP_2312012410",
-  생활관: "MAPP_2104261729",
-  // 필요시 추가
 };
 
 function changeLink(chidx, action) {
@@ -65,7 +63,7 @@ async function insertMenuItem(action, menuItem) {
   await pool.execute(sql, values);
 }
 
-async function fetchAllMenuItems(tabName, action) {
+async function fetchMenuItems(tabName, action) {
   const url = "https://www.hoseo.ac.kr/Home/BBSList.mbz";
   const headers = {
     "User-Agent":
@@ -147,10 +145,30 @@ async function fetchAllMenuItems(tabName, action) {
   }
 }
 
-(async () => {
+// 메인 실행 함수를 export
+async function runGeneralMenuScraper() {
+  console.log("📚 호서대학교 일반 사이트 데이터 수집 시작");
+
   for (const [tabName, action] of Object.entries(TAB_ACTIONS)) {
-    await fetchAllMenuItems(tabName, action);
+    console.log(`🚀 ${tabName} 데이터 수집 시작`);
+    await fetchMenuItems(tabName, action);
+    console.log(`✅ ${tabName} 데이터 수집 완료`);
   }
-  console.log("🎉 전체 완료");
-  pool.end();
-})();
+  console.log("✅ 호서대학교 일반 사이트 데이터 수집 완료");
+}
+
+// 직접 실행될 때만 메인 함수 호출
+if (require.main === module) {
+  (async () => {
+    try {
+      await runGeneralMenuScraper();
+      console.log("🎉 모든 탭 데이터 수집 완료");
+    } catch (err) {
+      console.error("❌ 전체 처리 중 오류:", err.message);
+    } finally {
+      pool.end();
+    }
+  })();
+}
+
+module.exports = { runGeneralMenuScraper };

@@ -5,7 +5,8 @@ const router = express.Router();
 const pool = require("@root/utils/db");
 const fs = require("fs");
 const path = require("path");
-const { parseAndSaveMenu } = require("@root/process/4_menu/get_menu_detail"); // 크롤러 함수 import
+const { parseAndSaveMenu } = require("@root/process/4_menu/get_menu_detail"); // 일반 메뉴 크롤러
+const { parseAndSaveHappyDormMenu } = require("@root/process/4_menu/get_menu_detail(happy_dorm)"); // 행복기숙사 크롤러
 
 // 메뉴 목록 (페이징)
 router.get("/list", async (req, res) => {
@@ -33,24 +34,33 @@ router.get("/list", async (req, res) => {
   }
 });
 
-// 메뉴 상세 (본문/파일) - 자동 다운로드 기능 추가
-router.get("/idx/:chidx", async (req, res) => {
-  const { chidx } = req.params;
-  const sql = `SELECT * FROM TBL_Menu WHERE chidx = ? LIMIT 1`;
+// 메뉴 상세 (본문/파일) - 타입별 자동 다운로드 기능
+router.get("/idx/:chidx/:type", async (req, res) => {
+  const { chidx, type } = req.params;
+
+  // chidx와 type을 모두 사용하여 정확한 메뉴 조회
+  const sql = `SELECT * FROM TBL_Menu WHERE chidx = ? AND type = ? LIMIT 1`;
 
   try {
-    const [menus] = await pool.execute(sql, [chidx]);
+    const [menus] = await pool.execute(sql, [chidx, type]);
     if (menus.length === 0) {
-      return res.status(404).json({ error: "메뉴를 찾을 수 없습니다." });
+      return res.status(404).json({
+        error: "메뉴를 찾을 수 없습니다.",
+        details: { chidx, type }
+      });
     }
 
     const menuData = menus[0];
-    const action = menuData.type; // action 정보 가져오기
+    const menuType = menuData.type; // type 정보 가져오기
 
-    // detail json 파일 확인
+    // 행복기숙사 여부 확인
+    const isHappyDorm = menuType === 'HAPPY_DORM_NUTRITION';
+
+    // JSON 파일 경로 결정 (타입별로 다른 디렉토리)
+    const baseDir = isHappyDorm ? "download_happy_dorm" : "download_menu";
     const jsonPath = path.join(
       process.cwd(),
-      "download_menu",
+      baseDir,
       String(chidx),
       `${chidx}_detail.json`
     );
@@ -60,20 +70,30 @@ router.get("/idx/:chidx", async (req, res) => {
 
     try {
       content = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
+      console.log(`📁 [${chidx}] 기존 JSON 파일 로드 성공`);
     } catch (e) {
       // JSON 파일이 없으면 다운로드 필요
       shouldDownload = true;
+      console.log(`🔍 [${chidx}] JSON 파일 없음, 다운로드 필요`);
     }
 
-    // 다운로드가 필요한 경우 실행
+    // 다운로드가 필요한 경우 타입별로 실행
     if (shouldDownload) {
       try {
-        console.log(`🔄 [${chidx}] 세부 내용 다운로드 시작...`);
-        content = await parseAndSaveMenu(chidx, action);
+        console.log(`🔄 [${chidx}] 세부 내용 다운로드 시작... (타입: ${menuType})`);
+
+        if (isHappyDorm) {
+          // 행복기숙사 처리
+          content = await parseAndSaveHappyDormMenu(chidx);
+        } else {
+          // 일반 호서대 메뉴 처리
+          content = await parseAndSaveMenu(chidx, menuType);
+        }
+
         console.log(`✅ [${chidx}] 세부 내용 다운로드 완료`);
 
         // ✅ JSON 저장 이후 다시 DB에서 최신 상태 조회
-        const [updated] = await pool.execute(sql, [chidx]);
+        const [updated] = await pool.execute(sql, [chidx, type]);
         if (updated.length > 0) menus[0] = updated[0];
       } catch (downloadError) {
         console.error(`❌ [${chidx}] 다운로드 실패:`, downloadError.message);
@@ -94,13 +114,14 @@ router.get("/idx/:chidx", async (req, res) => {
       assets: content ? content.assets : [],
       attachments: content ? content.attachments : files, // JSON이 있으면 JSON 데이터, 없으면 DB 데이터
       isDownloaded: content !== null,
+      downloadPath: baseDir, // 다운로드 경로 정보 추가
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// action별 목록 (천안, 아산, 당진 등)
+// action별 목록 (천안, 아산, 당진, 행복기숙사 등)
 router.get("/action/:action", async (req, res) => {
   const { action } = req.params;
   const { page = 1, pageSize = 20 } = req.query;
@@ -124,7 +145,7 @@ router.get("/action/:action", async (req, res) => {
   }
 });
 
-// action 목록 (천안, 아산, 당진 등의 목록)
+// action 목록 (천안, 아산, 당진, 행복기숙사 등의 목록)
 router.get("/actions", async (req, res) => {
   try {
     const [rows] = await pool.execute(`
@@ -133,10 +154,17 @@ router.get("/actions", async (req, res) => {
                WHEN type = 'MAPP_2312012408' THEN '천안'
                WHEN type = 'MAPP_2312012409' THEN '아산'
                WHEN type = 'MAPP_2312012410' THEN '당진'
+               WHEN type = 'HAPPY_DORM_NUTRITION' THEN '행복기숙사'
                ELSE type
-             END as name
+             END as name,
+             CASE 
+               WHEN type = 'HAPPY_DORM_NUTRITION' THEN 'happy_dorm'
+               ELSE 'general'
+             END as category
       FROM TBL_Menu 
-      ORDER BY type
+      ORDER BY 
+        CASE WHEN type = 'HAPPY_DORM_NUTRITION' THEN 1 ELSE 0 END,
+        type
     `);
     res.json(rows);
   } catch (err) {
@@ -144,6 +172,7 @@ router.get("/actions", async (req, res) => {
   }
 });
 
+// 검색 기능 (행복기숙사 포함)
 router.get("/search", async (req, res) => {
   const { title, author, action } = req.query;
   const page = parseInt(req.query.page || "1", 10);
@@ -163,7 +192,7 @@ router.get("/search", async (req, res) => {
     where.push("author LIKE ?");
     params.push(`%${author}%`);
   }
-  // action 검색 (천안, 아산, 당진 등)
+  // action 검색 (천안, 아산, 당진, 행복기숙사 등)
   if (action && action.trim()) {
     where.push("type = ?");
     params.push(action);
@@ -172,7 +201,14 @@ router.get("/search", async (req, res) => {
   let whereSql = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
 
   const sql = `
-      SELECT idx, type, chidx, title, author, create_dt
+      SELECT idx, type, chidx, title, author, create_dt,
+             CASE 
+               WHEN type = 'MAPP_2312012408' THEN '천안'
+               WHEN type = 'MAPP_2312012409' THEN '아산'
+               WHEN type = 'MAPP_2312012410' THEN '당진'
+               WHEN type = 'HAPPY_DORM_NUTRITION' THEN '행복기숙사'
+               ELSE type
+             END as type_name
       FROM TBL_Menu
       ${whereSql}
       ORDER BY chidx DESC
@@ -181,6 +217,32 @@ router.get("/search", async (req, res) => {
 
   try {
     const [rows] = await pool.query(sql, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 통계 정보 API (타입별 메뉴 개수)
+router.get("/stats", async (req, res) => {
+  try {
+    const [rows] = await pool.execute(`
+      SELECT 
+        type,
+        CASE 
+          WHEN type = 'MAPP_2312012408' THEN '천안'
+          WHEN type = 'MAPP_2312012409' THEN '아산'
+          WHEN type = 'MAPP_2312012410' THEN '당진'
+          WHEN type = 'HAPPY_DORM_NUTRITION' THEN '행복기숙사'
+          ELSE type
+        END as name,
+        COUNT(*) as count,
+        COUNT(CASE WHEN download_completed = 1 THEN 1 END) as downloaded,
+        COUNT(CASE WHEN download_completed IS NULL OR download_completed = 0 THEN 1 END) as pending
+      FROM TBL_Menu 
+      GROUP BY type
+      ORDER BY count DESC
+    `);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
