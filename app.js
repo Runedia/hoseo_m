@@ -1,10 +1,13 @@
+require("module-alias/register");
+
 var express = require("express");
 var logger = require("morgan");
 const cors = require("cors");
 
-var noticeRouter = require("./routes/notice");
-var shuttleRouter = require("./routes/shuttle");
-var menuRouter = require("./routes/menu");
+var noticeRouter = require("@root/routes/notice");
+var shuttleRouter = require("@root/routes/shuttle");
+var menuRouter = require("@root/routes/menu");
+var campusMapRouter = require("@root/routes/campus_map");
 
 var app = express();
 app.use(logger("dev"));
@@ -16,6 +19,7 @@ app.use("/download", express.static("download"));
 app.use("/notice", noticeRouter);
 app.use("/shuttle", shuttleRouter);
 app.use("/menu", menuRouter);
+app.use("/campus_map", campusMapRouter);
 
 // 404 핸들링
 app.use(function (req, res, next) {
