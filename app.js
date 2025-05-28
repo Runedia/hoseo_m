@@ -3,12 +3,13 @@ require("module-alias/register");
 var express = require("express");
 var logger = require("morgan");
 const cors = require("cors");
+const { accessLogger } = require("@root/utils/logger");
 
 var noticeRouter = require("@root/routes/notice");
 var shuttleRouter = require("@root/routes/shuttle");
 var menuRouter = require("@root/routes/menu");
 var campusMapRouter = require("@root/routes/campus_map");
-var edugradRouter = require("@root/routes/edugrad");
+var eduguideRouter = require("@root/routes/eduguide");
 const path = require("path");
 const fs = require("fs");
 
@@ -49,10 +50,22 @@ app.use((req, res, next) => {
     return localPatterns.some((pattern) => pattern.test(cleanedIP));
   };
 
-  // 외부 IP에서의 접속만 로깅 (IPv4 형식으로)
-  if (!isLocalIP(ip)) {
+  // 외부 IP에서의 접속인지 확인
+  const isExternalAccess = !isLocalIP(ip);
+
+  if (isExternalAccess) {
     const displayIP = cleanIP(ip);
-    console.log(`[외부 접속 IP] ${displayIP} - ${req.method} ${req.originalUrl}`);
+
+    // 응답 완료 후 로깅
+    res.on("finish", () => {
+      const logMessage = `[외부 접속] IP: ${displayIP} | ${req.method} ${req.originalUrl} | Status: ${res.statusCode}`;
+
+      // 콘솔 출력
+      console.log(logMessage);
+
+      // 로그 파일에 기록
+      accessLogger.info(logMessage);
+    });
   }
 
   next();
@@ -63,13 +76,14 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cors({ origin: "http://rukeras.com" }));
 app.use("/download_menu", express.static("download_menu"));
 app.use("/download_notice", express.static("download_notice"));
+app.use("/download_happy_dorm", express.static("download_happy_dorm"));
 app.use("/assets", express.static("assets")); // 학사일정 CSS 파일들을 위한 정적 파일 서빙
 
 app.use("/notice", noticeRouter);
 app.use("/shuttle", shuttleRouter);
 app.use("/menu", menuRouter);
 app.use("/campus_map", campusMapRouter);
-app.use("/edugrad", edugradRouter);
+app.use("/eduguide", eduguideRouter);
 
 // 404 핸들링
 app.use(function (req, res, next) {

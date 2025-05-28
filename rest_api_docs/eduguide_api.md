@@ -1,10 +1,10 @@
-# Edugrad API Documentation
+# Eduguide API Documentation
 
-호서대학교 학사일정 관련 REST API 문서입니다.
+호서대학교 학사정보 관련 REST API 문서입니다.
 
 ## Base URL
 ```
-/edugrad
+/eduguide
 ```
 
 ## 개요
@@ -17,7 +17,7 @@
 
 ## 데이터 소스
 
-호서대학교 공식 홈페이지에서 학사일정을 크롤링하여 데이터를 구성합니다.
+호서대학교 공식 홈페이지에서 학사정보를 크롤링하여 데이터를 구성합니다.
 
 ---
 
@@ -27,14 +27,14 @@
 
 학사일정을 HTML 형태로 조회합니다. 파일이 없으면 자동으로 크롤링하여 생성합니다.
 
-**Endpoint:** `GET /edugrad/calendar`
+**Endpoint:** `GET /eduguide/calendar`
 
 #### Request Parameters
 없음
 
 #### Example Request
 ```bash
-GET /edugrad/calendar
+GET /eduguide/calendar
 ```
 
 #### Success Response (200)
@@ -116,7 +116,7 @@ Content-Type: text/html; charset=utf-8
 
 학사일정을 JSON 형태로 조회합니다. 다양한 필터링 옵션을 제공합니다.
 
-**Endpoint:** `GET /edugrad/calendar/json`
+**Endpoint:** `GET /eduguide/calendar/json`
 
 #### Request Parameters (Query String)
 
@@ -130,22 +130,22 @@ Content-Type: text/html; charset=utf-8
 #### Example Requests
 ```bash
 # 전체 학사일정 조회
-GET /edugrad/calendar/json
+GET /eduguide/calendar/json
 
 # 특정 날짜 일정 조회
-GET /edugrad/calendar/json?date=2025-03-01
+GET /eduguide/calendar/json?date=2025-03-01
 
 # 특정 월 일정 조회
-GET /edugrad/calendar/json?month=2025-03
+GET /eduguide/calendar/json?month=2025-03
 
 # 특정 연도 일정 조회
-GET /edugrad/calendar/json?year=2025
+GET /eduguide/calendar/json?year=2025
 
 # 최근 10개 일정 조회
-GET /edugrad/calendar/json?limit=10
+GET /eduguide/calendar/json?limit=10
 
 # 복합 필터링 (2025년 3월 최근 5개)
-GET /edugrad/calendar/json?month=2025-03&limit=5
+GET /eduguide/calendar/json?month=2025-03&limit=5
 ```
 
 #### Success Response (200)
@@ -279,34 +279,34 @@ GET /edugrad/calendar/json?month=2025-03&limit=5
 ### 1. 날짜별 필터링
 ```bash
 # 특정 날짜의 일정만 조회
-GET /edugrad/calendar/json?date=2025-03-01
+GET /eduguide/calendar/json?date=2025-03-01
 ```
 
 ### 2. 월별 필터링
 ```bash
 # 특정 월의 모든 일정 조회
-GET /edugrad/calendar/json?month=2025-03
+GET /eduguide/calendar/json?month=2025-03
 ```
 
 ### 3. 연도별 필터링
 ```bash
 # 특정 연도의 모든 일정 조회
-GET /edugrad/calendar/json?year=2025
+GET /eduguide/calendar/json?year=2025
 ```
 
 ### 4. 개수 제한
 ```bash
 # 최신 일정 N개만 조회
-GET /edugrad/calendar/json?limit=10
+GET /eduguide/calendar/json?limit=10
 ```
 
 ### 5. 복합 필터링
 ```bash
 # 2025년 3월 일정 중 최근 5개
-GET /edugrad/calendar/json?month=2025-03&limit=5
+GET /eduguide/calendar/json?month=2025-03&limit=5
 
 # 2025년 일정 중 최근 20개
-GET /edugrad/calendar/json?year=2025&limit=20
+GET /eduguide/calendar/json?year=2025&limit=20
 ```
 
 ---
@@ -315,27 +315,27 @@ GET /edugrad/calendar/json?year=2025&limit=20
 
 ### 1. 학사일정 HTML 페이지 접근
 ```bash
-curl "http://localhost:3000/edugrad/calendar"
+curl "http://localhost:3000/eduguide/calendar"
 ```
 
 ### 2. 전체 학사일정 JSON 조회
 ```bash
-curl "http://localhost:3000/edugrad/calendar/json"
+curl "http://localhost:3000/eduguide/calendar/json"
 ```
 
 ### 3. 개강날 찾기
 ```bash
-curl "http://localhost:3000/edugrad/calendar/json?date=2025-03-03"
+curl "http://localhost:3000/eduguide/calendar/json?date=2025-03-03"
 ```
 
 ### 4. 3월 모든 학사일정 조회
 ```bash
-curl "http://localhost:3000/edugrad/calendar/json?month=2025-03"
+curl "http://localhost:3000/eduguide/calendar/json?month=2025-03"
 ```
 
 ### 5. 최근 학사일정 10개 조회
 ```bash
-curl "http://localhost:3000/edugrad/calendar/json?limit=10"
+curl "http://localhost:3000/eduguide/calendar/json?limit=10"
 ```
 
 ---
@@ -381,19 +381,6 @@ curl "http://localhost:3000/edugrad/calendar/json?limit=10"
 4. **필터링 성능**: 대량의 학사일정 데이터에서 필터링이 수행되므로 적절한 필터 조건 사용을 권장합니다.
 
 5. **날짜 형식**: 모든 날짜는 YYYY-MM-DD 형식을 사용합니다.
-
----
-
-## FAQ
-
-### Q: 학사일정이 업데이트되지 않아요
-A: `assets/학사일정.html`과 `assets/학사일정.json` 파일을 삭제한 후 API를 다시 호출하세요.
-
-### Q: HTML과 JSON 중 어떤 것을 사용해야 하나요?
-A: 웹페이지에 직접 표시할 경우 HTML을, 애플리케이션에서 데이터 처리할 경우 JSON을 사용하세요.
-
-### Q: 크롤링 실패 시 어떻게 해야 하나요?
-A: 네트워크 상태를 확인하고, 호서대 홈페이지 접속 가능 여부를 확인한 후 다시 시도하세요.
 
 ---
 

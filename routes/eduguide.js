@@ -1,11 +1,13 @@
+require("module-alias/register");
+
 const express = require("express");
 const router = express.Router();
 const fs = require("fs");
 const path = require("path");
 
 // 학사일정 크롤링 모듈 import
-const { generateCalendarHTML } = require("../process/6_edugrad/get_calendar");
-const { parseCalendarToJson, generateHelperFunctions } = require("../process/6_edugrad/parse_calendar_to_json");
+const { generateCalendarHTML } = require("@root/process/6_eduguide/get_calendar");
+const { parseCalendarToJson, generateHelperFunctions } = require("@root/process/6_eduguide/parse_calendar_to_json");
 
 // 학사일정 HTML API
 router.get("/calendar", async (req, res) => {
@@ -15,23 +17,22 @@ router.get("/calendar", async (req, res) => {
     // 파일 존재 여부 확인
     if (!fs.existsSync(calendarPath)) {
       console.log("🔄 학사일정 HTML 파일이 없어 자동 생성 시작...");
-      
+
       try {
         // 1. HTML 크롤링 및 생성
         await generateCalendarHTML();
         console.log("✅ 학사일정 HTML 자동 생성 완료");
-        
+
         // 2. JSON 파싱도 함께 실행
         await parseCalendarToJson();
         await generateHelperFunctions();
         console.log("✅ 학사일정 JSON 자동 생성 완료");
-        
       } catch (generateError) {
         console.error("❌ 학사일정 자동 생성 실패:", generateError.message);
         return res.status(500).json({
           error: "학사일정을 자동 생성하는 중 오류가 발생했습니다.",
           details: generateError.message,
-          suggestion: "잠시 후 다시 시도하거나 관리자에게 문의하세요."
+          suggestion: "잠시 후 다시 시도하거나 관리자에게 문의하세요.",
         });
       }
     }
@@ -46,7 +47,7 @@ router.get("/calendar", async (req, res) => {
     console.error("학사일정 API 오류:", error);
     res.status(500).json({
       error: "학사일정을 불러오는 중 오류가 발생했습니다.",
-      details: error.message
+      details: error.message,
     });
   }
 });
@@ -60,7 +61,7 @@ router.get("/calendar/json", async (req, res) => {
     // JSON 파일 존재 여부 확인
     if (!fs.existsSync(jsonPath)) {
       console.log("🔄 학사일정 JSON 파일이 없어 자동 생성 시작...");
-      
+
       try {
         // 1. HTML이 없으면 먼저 HTML 생성
         if (!fs.existsSync(htmlPath)) {
@@ -68,18 +69,17 @@ router.get("/calendar/json", async (req, res) => {
           await generateCalendarHTML();
           console.log("✅ HTML 생성 완료");
         }
-        
+
         // 2. JSON 파싱 실행
         await parseCalendarToJson();
         await generateHelperFunctions();
         console.log("✅ 학사일정 JSON 자동 생성 완료");
-        
       } catch (generateError) {
         console.error("❌ 학사일정 JSON 자동 생성 실패:", generateError.message);
         return res.status(500).json({
           error: "학사일정 JSON을 자동 생성하는 중 오류가 발생했습니다.",
           details: generateError.message,
-          suggestion: "잠시 후 다시 시도하거나 관리자에게 문의하세요."
+          suggestion: "잠시 후 다시 시도하거나 관리자에게 문의하세요.",
         });
       }
     }

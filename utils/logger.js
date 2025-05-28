@@ -60,4 +60,36 @@ if (process.env.NODE_ENV === "production") {
   logger.level = "debug";
 }
 
-module.exports = logger;
+// 외부 접속 전용 로거 생성
+const accessLogger = winston.createLogger({
+  level: "info",
+  format: winston.format.combine(
+    winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
+    winston.format.printf(({ timestamp, message }) => {
+      return `${timestamp} ${message}`;
+    })
+  ),
+  transports: [
+    // 외부 접속 로그 파일
+    new winston.transports.File({
+      filename: path.join(logDir, "access.log"),
+      maxsize: 10 * 1024 * 1024, // 10MB
+      maxFiles: 5,
+    }),
+
+    // 일별 외부 접속 로그 파일
+    new winston.transports.DailyRotateFile({
+      filename: path.join(logDir, "%DATE%-access.log"),
+      datePattern: "YYYY-MM-DD",
+      zippedArchive: true,
+      maxSize: "20m",
+      maxFiles: "14d",
+    }),
+  ],
+});
+
+module.exports = {
+  logger,
+  accessLogger,
+};
+
