@@ -4,6 +4,10 @@
 .env.*
 download_notice
 download_menu
+download_happy_dorm
 *.log
 trash
 logs
+assets/css
+assets/학사일정.*
+assets/학사일정_인덱스.json

@@ -1,0 +1,274 @@
+const cheerio = require("cheerio");
+const fs = require("fs-extra");
+const path = require("path");
+
+const INPUT_HTML = path.resolve(process.cwd(), "assets", "학사일정.html");
+const OUTPUT_JSON = path.resolve(process.cwd(), "assets", "학사일정.json");
+
+// 날짜 파싱 함수
+function parseDate(dateStr, year = 2025) {
+  // "2(목)", "6(월) ~ 10(금)", "2026.1월" 등의 형태 처리
+  dateStr = dateStr.trim();
+  
+  // 2026년 형태 처리
+  if (dateStr.includes("2026")) {
+    year = 2026;
+    dateStr = dateStr.replace("2026.", "");
+  }
+  
+  const results = [];
+  
+  // 기간 형태 (6(월) ~ 10(금), 23(월) ~ 7. 11.(금) 등)
+  if (dateStr.includes("~")) {
+    const [startPart, endPart] = dateStr.split("~").map(s => s.trim());
+    
+    // 시작일 파싱
+    const startMatch = startPart.match(/(\d+)\([^)]+\)/);
+    if (startMatch) {
+      const startDay = parseInt(startMatch[1]);
+      
+      // 종료일 파싱
+      let endDay, endMonth;
+      
+      // "7. 11.(금)" 형태 (다른 달로 넘어가는 경우)
+      const crossMonthMatch = endPart.match(/(\d+)\.\s*(\d+)\.\([^)]+\)/);
+      if (crossMonthMatch) {
+        endMonth = parseInt(crossMonthMatch[1]);
+        endDay = parseInt(crossMonthMatch[2]);
+      } else {
+        // 같은 달 내 종료일
+        const endMatch = endPart.match(/(\d+)\([^)]+\)/);
+        if (endMatch) {
+          endDay = parseInt(endMatch[1]);
+          endMonth = null; // 같은 달
+        }
+      }
+      
+      // 날짜 범위 생성
+      if (endDay) {
+        const currentMonth = getCurrentMonth(dateStr);
+        const targetEndMonth = endMonth || currentMonth;
+        
+        if (endMonth && endMonth !== currentMonth) {
+          // 다른 달로 넘어가는 경우
+          // 현재 달의 마지막 날까지
+          const daysInCurrentMonth = getDaysInMonth(year, currentMonth);
+          for (let day = startDay; day <= daysInCurrentMonth; day++) {
+            results.push(formatDate(year, currentMonth, day));
+          }
+          // 다음 달 1일부터 종료일까지
+          for (let day = 1; day <= endDay; day++) {
+            results.push(formatDate(year, targetEndMonth, day));
+          }
+        } else {
+          // 같은 달 내
+          for (let day = startDay; day <= endDay; day++) {
+            results.push(formatDate(year, currentMonth, day));
+          }
+        }
+      }
+    }
+  } else {
+    // 단일 날짜 (2(목), 20(목) 등)
+    const singleMatch = dateStr.match(/(\d+)\([^)]+\)/);
+    if (singleMatch) {
+      const day = parseInt(singleMatch[1]);
+      const month = getCurrentMonth(dateStr);
+      results.push(formatDate(year, month, day));
+    }
+  }
+  
+  return results;
+}
+
+// 현재 처리 중인 월 (전역 변수로 관리)
+let currentProcessingMonth = 1;
+
+function getCurrentMonth(dateStr) {
+  // 컨텍스트에서 현재 월 반환
+  return currentProcessingMonth;
+}
+
+function getDaysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+
+function formatDate(year, month, day) {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+// 월 이름을 숫자로 변환
+function getMonthNumber(monthText) {
+  const monthMap = {
+    "1월": 1, "2월": 2, "3월": 3, "4월": 4, "5월": 5, "6월": 6,
+    "7월": 7, "8월": 8, "9월": 9, "10월": 10, "11월": 11, "12월": 12,
+    "January": 1, "February": 2, "March": 3, "April": 4, "May": 5, "June": 6,
+    "July": 7, "August": 8, "September": 9, "October": 10, "November": 11, "December": 12
+  };
+  
+  // "2026.1월" 형태 처리
+  if (monthText.includes("2026")) {
+    const match = monthText.match(/(\d+)월/);
+    return match ? parseInt(match[1]) : 1;
+  }
+  
+  return monthMap[monthText] || 1;
+}
+
+// 메인 파싱 함수
+async function parseCalendarToJson() {
+  try {
+    console.log("📅 학사일정 HTML 파싱 시작...");
+    
+    // 1. HTML 파일 읽기
+    if (!fs.existsSync(INPUT_HTML)) {
+      throw new Error(`학사일정 HTML 파일을 찾을 수 없습니다: ${INPUT_HTML}`);
+    }
+    
+    const htmlContent = fs.readFileSync(INPUT_HTML, "utf-8");
+    const $ = cheerio.load(htmlContent);
+    
+    // 2. 학사일정 데이터 구조
+    const calendarData = {
+      title: "호서대학교 2025학년도 학사일정",
+      generatedAt: new Date().toISOString(),
+      events: []
+    };
+    
+    // 3. 각 월별 일정 파싱
+    $('#academic_scd01 ul > li').each((index, element) => {
+      const $li = $(element);
+      
+      // 월 정보 추출
+      const monthText = $li.find('.box-month').text().trim();
+      currentProcessingMonth = getMonthNumber(monthText);
+      
+      console.log(`📌 ${monthText} 처리 중...`);
+      
+      // 해당 월의 일정들 처리
+      $li.find('.list-box').each((i, listBox) => {
+        const $box = $(listBox);
+        const dateText = $box.find('.list-date em').text().trim();
+        const eventText = $box.find('.list-content').text().trim();
+        
+        if (dateText && eventText) {
+          // 날짜 파싱
+          const dates = parseDate(dateText, monthText.includes("2026") ? 2026 : 2025);
+          
+          // 각 날짜에 대해 이벤트 추가
+          dates.forEach(date => {
+            calendarData.events.push({
+              date: date,
+              dateOriginal: dateText,
+              event: eventText,
+              month: monthText,
+              monthNumber: currentProcessingMonth,
+              year: monthText.includes("2026") ? 2026 : 2025
+            });
+          });
+          
+          console.log(`  ✅ ${dateText} → ${eventText} (${dates.length}개 날짜)`);
+        }
+      });
+    });
+    
+    // 4. 날짜순 정렬
+    calendarData.events.sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    // 5. 통계 정보 추가
+    calendarData.statistics = {
+      totalEvents: calendarData.events.length,
+      eventsByMonth: {},
+      dateRange: {
+        start: calendarData.events[0]?.date || null,
+        end: calendarData.events[calendarData.events.length - 1]?.date || null
+      }
+    };
+    
+    // 월별 이벤트 수 계산
+    calendarData.events.forEach(event => {
+      const monthKey = `${event.year}-${String(event.monthNumber).padStart(2, '0')}`;
+      calendarData.statistics.eventsByMonth[monthKey] = 
+        (calendarData.statistics.eventsByMonth[monthKey] || 0) + 1;
+    });
+    
+    // 6. JSON 파일로 저장
+    await fs.writeFile(OUTPUT_JSON, JSON.stringify(calendarData, null, 2), "utf-8");
+    
+    console.log("\\n🎉 학사일정 JSON 변환 완료!");
+    console.log(`📁 저장 위치: ${OUTPUT_JSON}`);
+    console.log(`📊 총 이벤트 수: ${calendarData.statistics.totalEvents}개`);
+    console.log(`📅 기간: ${calendarData.statistics.dateRange.start} ~ ${calendarData.statistics.dateRange.end}`);
+    
+    // 7. 샘플 데이터 출력
+    console.log("\\n📋 샘플 데이터:");
+    calendarData.events.slice(0, 5).forEach(event => {
+      console.log(`  ${event.date} - ${event.event}`);
+    });
+    
+    return calendarData;
+    
+  } catch (error) {
+    console.error("❌ 오류 발생:", error.message);
+    console.error(error.stack);
+    throw error;
+  }
+}
+
+// 날짜별 조회를 위한 헬퍼 함수들도 생성
+async function generateHelperFunctions() {
+  try {
+    const calendarData = JSON.parse(fs.readFileSync(OUTPUT_JSON, "utf-8"));
+    
+    // 날짜별 인덱스 생성
+    const dateIndex = {};
+    calendarData.events.forEach(event => {
+      if (!dateIndex[event.date]) {
+        dateIndex[event.date] = [];
+      }
+      dateIndex[event.date].push(event);
+    });
+    
+    // 월별 인덱스 생성
+    const monthIndex = {};
+    calendarData.events.forEach(event => {
+      const monthKey = `${event.year}-${String(event.monthNumber).padStart(2, '0')}`;
+      if (!monthIndex[monthKey]) {
+        monthIndex[monthKey] = [];
+      }
+      monthIndex[monthKey].push(event);
+    });
+    
+    // 인덱스 파일 저장
+    const indexData = {
+      byDate: dateIndex,
+      byMonth: monthIndex,
+      generatedAt: new Date().toISOString()
+    };
+    
+    const indexPath = path.resolve(process.cwd(), "assets", "학사일정_인덱스.json");
+    await fs.writeFile(indexPath, JSON.stringify(indexData, null, 2), "utf-8");
+    
+    console.log(`📚 인덱스 파일 생성: ${indexPath}`);
+    
+  } catch (error) {
+    console.error("❌ 인덱스 생성 실패:", error.message);
+  }
+}
+
+// 실행
+async function main() {
+  await parseCalendarToJson();
+  await generateHelperFunctions();
+}
+
+// 모듈로 export (다른 파일에서 사용 가능)
+module.exports = {
+  parseCalendarToJson,
+  generateHelperFunctions
+};
+
+// 직접 실행 시
+if (require.main === module) {
+  main().catch(console.error);
+}

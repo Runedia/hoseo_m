@@ -6,7 +6,7 @@
   "author": "jhkim <runedia@naver.com>",
   "scripts": {
     "start": "node ./bin/www",
-    "dev": "nodemon ./bin/www --ignore logs/* --ignore download/* --ignore .history --ignore node_modules/*",
+    "dev": "nodemon ./bin/www",
     "notice:list": "node ./process/1_notice/get_notice_list.js",
     "notice:detail": "node ./process/1_notice/get_notice_detail.js",
     "shuttle:workday": "node ./process/2_shuttle/1_workday.js",
@@ -34,5 +34,14 @@
   },
   "_moduleAliases": {
     "@root": "."
+  },
+  "nodemonConfig": {
+    "watch": [
+      "process/",
+      "routes/",
+      "utils/",
+      "app.js"
+    ],
+    "ext": "js,json"
   }
 }
