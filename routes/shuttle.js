@@ -76,14 +76,10 @@ const loadAllScheduleData = () => {
     });
   });
 
-  console.log(
-    `셔틀 시간표 데이터 로딩 완료 - 성공: ${successCount}개, 실패: ${failCount}개`
-  );
+  console.log(`셔틀 시간표 데이터 로딩 완료 - 성공: ${successCount}개, 실패: ${failCount}개`);
 
   if (failCount > 0) {
-    console.warn(
-      `⚠️  ${failCount}개 파일 로딩에 실패했습니다. 해당 노선은 기본값으로 동작합니다.`
-    );
+    console.warn(`⚠️  ${failCount}개 파일 로딩에 실패했습니다. 해당 노선은 기본값으로 동작합니다.`);
   }
 };
 
@@ -193,8 +189,7 @@ router.get("/schedule/detail", (req, res) => {
     if (!date || !route || !schedule) {
       return res.status(400).json({
         success: false,
-        message:
-          "날짜(date), 노선 번호(route), 스케줄 번호(schedule)가 필요합니다.",
+        message: "날짜(date), 노선 번호(route), 스케줄 번호(schedule)가 필요합니다.",
       });
     }
 

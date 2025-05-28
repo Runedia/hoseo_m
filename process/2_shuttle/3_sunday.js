@@ -64,19 +64,9 @@ rows.each((i, row) => {
 });
 
 // 아산 → 천안 JSON 파일로 저장
-fs.writeFileSync(
-  "assets/셔틀(아캠_천캠_일요일_공휴일).json",
-  JSON.stringify(asanToCheonan, null, 2),
-  "utf-8"
-);
+fs.writeFileSync("assets/셔틀(아캠_천캠_일요일_공휴일).json", JSON.stringify(asanToCheonan, null, 2), "utf-8");
 
 // 천안 → 아산 JSON 파일로 저장
-fs.writeFileSync(
-  "assets/셔틀(천캠_아캠_일요일_공휴일).json",
-  JSON.stringify(cheonanToAsan, null, 2),
-  "utf-8"
-);
+fs.writeFileSync("assets/셔틀(천캠_아캠_일요일_공휴일).json", JSON.stringify(cheonanToAsan, null, 2), "utf-8");
 
-console.log(
-  '완료! "셔틀(아캠_천캠_일요일_공휴일).json"와 "셔틀(천캠_아캠_일요일_공휴일).json" 파일이 생성되었습니다.'
-);
+console.log('완료! "셔틀(아캠_천캠_일요일_공휴일).json"와 "셔틀(천캠_아캠_일요일_공휴일).json" 파일이 생성되었습니다.');

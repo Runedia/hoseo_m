@@ -56,17 +56,8 @@ async function downloadFile(fileUrl, destPath) {
 }
 
 // 파일 다운로드 + DB 저장
-async function downloadFileAndSaveDB(
-  noticeNum,
-  fileType,
-  fileUrl,
-  originName,
-  downloadDir
-) {
-  const filenameSafe = safeFilename(
-    originName,
-    fileType === "image" ? ".jpg" : ".pdf"
-  );
+async function downloadFileAndSaveDB(noticeNum, fileType, fileUrl, originName, downloadDir) {
+  const filenameSafe = safeFilename(originName, fileType === "image" ? ".jpg" : ".pdf");
   const localFilePath = path.join(downloadDir, filenameSafe);
   const relativeFilePath = path.relative(process.cwd(), localFilePath);
 
@@ -115,28 +106,17 @@ async function processAttachments($, chidx, downloadDir) {
       });
 
       downloadPromises.push(
-        downloadFileAndSaveDB(
-          chidx,
-          "attachment",
-          fileUrl,
-          originName,
-          downloadDir
-        )
+        downloadFileAndSaveDB(chidx, "attachment", fileUrl, originName, downloadDir)
           .then((result) => {
             // attachments 배열의 해당 항목 업데이트
-            const attachmentIndex = attachments.findIndex(
-              (att) => att.originUrl === fileUrl
-            );
+            const attachmentIndex = attachments.findIndex((att) => att.originUrl === fileUrl);
             if (attachmentIndex !== -1) {
               attachments[attachmentIndex].localPath = result.localpath;
               attachments[attachmentIndex].fileName = result.filename;
             }
           })
           .catch((e) => {
-            console.error(
-              `[${chidx}] 첨부파일 다운로드 오류 (${originName}):`,
-              e.message
-            );
+            console.error(`[${chidx}] 첨부파일 다운로드 오류 (${originName}):`, e.message);
           })
       );
     }
@@ -186,10 +166,7 @@ async function processImages($, boardElement, chidx, downloadDir) {
           });
         })
         .catch((e) => {
-          console.error(
-            `[${chidx}] 이미지 다운로드 오류 (${filename}):`,
-            e.message
-          );
+          console.error(`[${chidx}] 이미지 다운로드 오류 (${filename}):`, e.message);
         })
     );
   });
@@ -199,11 +176,7 @@ async function processImages($, boardElement, chidx, downloadDir) {
 }
 
 // 공지사항 다운로드 상태 업데이트
-async function updateNoticeDownloadStatus(
-  chidx,
-  isSuccess,
-  errorMessage = null
-) {
+async function updateNoticeDownloadStatus(chidx, isSuccess, errorMessage = null) {
   try {
     await pool.execute(
       `UPDATE tbl_notice 
@@ -227,21 +200,13 @@ async function parseAndSaveNotice(chidx) {
 
     // 본문 영역 추출
     let boardContent = $("#board_item_list");
-    if (
-      !boardContent.length ||
-      !boardContent.html() ||
-      !boardContent.text().trim()
-    ) {
+    if (!boardContent.length || !boardContent.html() || !boardContent.text().trim()) {
       boardContent = $(".bbs-view-content");
     }
 
     if (!boardContent.length) {
       logger.warn(`본문 영역을 찾을 수 없음 [${chidx}]`);
-      await updateNoticeDownloadStatus(
-        chidx,
-        false,
-        "본문 영역을 찾을 수 없음"
-      );
+      await updateNoticeDownloadStatus(chidx, false, "본문 영역을 찾을 수 없음");
       throw new Error("본문 영역을 찾을 수 없습니다.");
     }
 
@@ -257,12 +222,7 @@ async function parseAndSaveNotice(chidx) {
 
     // 이미지 처리 (HTML 수정 포함)
     console.log(`[${chidx}] 이미지 처리 중...`);
-    const assets = await processImages(
-      $,
-      boardContent,
-      chidx,
-      noticeDownloadDir
-    );
+    const assets = await processImages($, boardContent, chidx, noticeDownloadDir);
 
     // HTML 정리: 불필요한 요소 제거
     boardContent.find("dt.no-print").remove();
@@ -282,18 +242,12 @@ async function parseAndSaveNotice(chidx) {
     };
 
     const jsonFilePath = path.join(noticeDownloadDir, `${chidx}_detail.json`);
-    await fs.writeFile(
-      jsonFilePath,
-      JSON.stringify(jsonResult, null, 2),
-      "utf-8"
-    );
+    await fs.writeFile(jsonFilePath, JSON.stringify(jsonResult, null, 2), "utf-8");
 
     // DB에 완료 상태 업데이트
     await updateNoticeDownloadStatus(chidx, true);
 
-    console.log(
-      `[${chidx}] ✅ 완료: HTML(${assets.length}개 이미지), JSON, ${attachments.length}개 첨부파일, DB 저장`
-    );
+    console.log(`[${chidx}] ✅ 완료: HTML(${assets.length}개 이미지), JSON, ${attachments.length}개 첨부파일, DB 저장`);
 
     return jsonResult;
   } catch (err) {

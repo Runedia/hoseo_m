@@ -24,42 +24,66 @@ rows.each((i, row) => {
 
   const count = $(cells[0]).text().trim();
 
-  // 아산 → 천안 (첫 번째 7개 칼럼)
-  let idx = 1;
+  // 아산 → 천안 (2~8번째 컬럼, pos1~pos7)
   asanToCheonan[count] = {};
-  for (let j = 1; j <= 7; j++) {
-    if (j < cells.length) {
-      const cell = cells[j];
-      const colspan = parseInt($(cell).attr("colspan") || "1");
-      let value = $(cell).text().replace(/\s+/g, "").trim();
+  let asanPosIndex = 1;
 
-      for (let k = 0; k < colspan; k++) {
-        asanToCheonan[count][`pos${idx}`] = isTimeFormat(value) ? value : "";
-        idx++;
+  for (let j = 1; j <= 7 && j < cells.length; j++) {
+    const cell = $(cells[j]);
+    const colspan = parseInt(cell.attr("colspan") || "1");
+    let value = cell.text().replace(/\s+/g, "").trim();
+
+    // colspan이 1이면 정상적인 시간 데이터
+    if (colspan === 1) {
+      if (asanPosIndex <= 7) {
+        asanToCheonan[count][`pos${asanPosIndex}`] = isTimeFormat(value)
+          ? value
+          : "";
+        asanPosIndex++;
       }
     } else {
-      asanToCheonan[count][`pos${idx}`] = "";
-      idx++;
+      // colspan이 1보다 크면 비어있는 cell로 처리
+      for (let k = 0; k < colspan && asanPosIndex <= 7; k++) {
+        asanToCheonan[count][`pos${asanPosIndex}`] = "";
+        asanPosIndex++;
+      }
     }
   }
 
-  // 천안 → 아산 (다음 7개 칼럼)
-  idx = 1;
-  cheonanToAsan[count] = {};
-  for (let j = 8; j <= 14; j++) {
-    if (j < cells.length) {
-      const cell = cells[j];
-      const colspan = parseInt($(cell).attr("colspan") || "1");
-      let value = $(cell).text().replace(/\s+/g, "").trim();
+  // 나머지 위치들을 빈 문자열로 채우기
+  for (let k = asanPosIndex; k <= 7; k++) {
+    asanToCheonan[count][`pos${k}`] = "";
+  }
 
-      for (let k = 0; k < colspan; k++) {
-        cheonanToAsan[count][`pos${idx}`] = isTimeFormat(value) ? value : "";
-        idx++;
+  // 천안 → 아산 (9~15번째 컬럼, pos1~pos7)
+  cheonanToAsan[count] = {};
+  let cheonanPosIndex = 1;
+
+  for (let j = 8; j <= 14 && j < cells.length; j++) {
+    const cell = $(cells[j]);
+    const colspan = parseInt(cell.attr("colspan") || "1");
+    let value = cell.text().replace(/\s+/g, "").trim();
+
+    // colspan이 1이면 정상적인 시간 데이터
+    if (colspan === 1) {
+      if (cheonanPosIndex <= 7) {
+        cheonanToAsan[count][`pos${cheonanPosIndex}`] = isTimeFormat(value)
+          ? value
+          : "";
+        cheonanPosIndex++;
       }
     } else {
-      cheonanToAsan[count][`pos${idx}`] = "";
-      idx++;
+      // colspan이 1보다 크면 비어있는 cell로 처리
+      for (let k = 0; k < colspan && cheonanPosIndex <= 7; k++) {
+        cheonanToAsan[count][`pos${cheonanPosIndex}`] = "";
+        cheonanPosIndex++;
+      }
     }
+  }
+
+  // 나머지 위치들을 빈 문자열로 채우기
+  for (let k = cheonanPosIndex; k <= 7; k++) {
+    cheonanToAsan[count][`pos${k}`] = "";
   }
 });
 

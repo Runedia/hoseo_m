@@ -8,7 +8,6 @@ const pool = require("@root/utils/db");
 const TAB_ACTIONS = {
   천안: "MAPP_2312012408",
   아산: "MAPP_2312012409",
-  // 당진: "MAPP_2312012410",
 };
 
 function changeLink(chidx, action) {
@@ -52,14 +51,7 @@ async function insertMenuItem(action, menuItem) {
     INSERT INTO TBL_Menu (idx, type, chidx, title, link, author, create_dt)
     VALUES (null, ?, ?, ?, ?, ?, ?)
   `;
-  const values = [
-    action,
-    menuItem.chidx,
-    menuItem.title,
-    menuItem.link,
-    menuItem.author,
-    menuItem.date,
-  ];
+  const values = [action, menuItem.chidx, menuItem.title, menuItem.link, menuItem.author, menuItem.date];
   await pool.execute(sql, values);
 }
 
@@ -98,20 +90,13 @@ async function fetchMenuItems(tabName, action) {
 
       if (chidxList.length > 0) {
         const placeholders = chidxList.map(() => "?").join(",");
-        const [result] = await pool.query(
-          `SELECT chidx FROM TBL_Menu WHERE chidx IN (${placeholders})`,
-          chidxList
-        );
+        const [result] = await pool.query(`SELECT chidx FROM TBL_Menu WHERE chidx IN (${placeholders})`, chidxList);
         const existingChidxSet = new Set(result.map((r) => r.chidx));
-        rowsToInsert = rows.filter(
-          (r) => r.chidx && !existingChidxSet.has(r.chidx)
-        );
+        rowsToInsert = rows.filter((r) => r.chidx && !existingChidxSet.has(r.chidx));
 
         // 모두 중복이면 종료 (페이지 루프 break)
         if (rowsToInsert.length === 0) {
-          console.log(
-            `⚡️ ${tabName} - ${page} 페이지는 전부 중복. 이후 페이지 크롤링 중단`
-          );
+          console.log(`⚡️ ${tabName} - ${page} 페이지는 전부 중복. 이후 페이지 크롤링 중단`);
           break;
         }
       }
@@ -127,10 +112,7 @@ async function fetchMenuItems(tabName, action) {
           if (err.code === "ER_DUP_ENTRY") {
             duplicateCount++;
           } else {
-            console.error(
-              `❌ row insert 실패 (chidx: ${row.chidx}):`,
-              err.message
-            );
+            console.error(`❌ row insert 실패 (chidx: ${row.chidx}):`, err.message);
           }
         }
       }

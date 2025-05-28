@@ -5,9 +5,7 @@ const router = express.Router();
 const pool = require("@root/utils/db");
 const fs = require("fs");
 const path = require("path");
-const {
-  parseAndSaveNotice,
-} = require("@root/process/1_notice/get_notice_detail"); // 크롤러 함수 import
+const { parseAndSaveNotice } = require("@root/process/1_notice/get_notice_detail"); // 크롤러 함수 import
 
 // 공지 목록 (페이징)
 router.get("/list", async (req, res) => {
@@ -47,12 +45,7 @@ router.get("/idx/:chidx", async (req, res) => {
     }
 
     // detail json 파일 확인
-    const jsonPath = path.join(
-      process.cwd(),
-      "download_notice",
-      String(chidx),
-      `${chidx}_detail.json`
-    );
+    const jsonPath = path.join(process.cwd(), "download_notice", String(chidx), `${chidx}_detail.json`);
 
     let content = null;
     let shouldDownload = false;
@@ -112,11 +105,7 @@ router.get("/type/:type", async (req, res) => {
     LIMIT ? OFFSET ?
   `;
   try {
-    const [rows] = await pool.execute(sql, [
-      type,
-      String(pageSize),
-      String(offset),
-    ]);
+    const [rows] = await pool.execute(sql, [type, String(pageSize), String(offset)]);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });

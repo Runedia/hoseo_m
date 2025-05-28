@@ -11,3 +11,4 @@ logs
 assets/css
 assets/학사일정.*
 assets/학사일정_인덱스.json
+*.backup

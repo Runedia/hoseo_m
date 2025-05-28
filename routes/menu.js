@@ -5,7 +5,7 @@ const router = express.Router();
 const pool = require("@root/utils/db");
 const fs = require("fs");
 const path = require("path");
-const { parseAndSaveMenu } = require("@root/process/4_menu/get_menu_detail"); // 일반 메뉴 크롤러
+const { parseAndSaveCampusMenu } = require("@root/process/4_menu/get_menu_detail"); // 일반 메뉴 크롤러
 const { parseAndSaveHappyDormMenu } = require("@root/process/4_menu/get_menu_detail(happy_dorm)"); // 행복기숙사 크롤러
 
 // 메뉴 목록 (페이징)
@@ -19,8 +19,8 @@ router.get("/list", async (req, res) => {
       details: {
         required: true,
         parameter: "action",
-        example: "MAPP_2312012408 (천안), MAPP_2312012409 (아산), MAPP_2312012410 (당진), HAPPY_DORM_NUTRITION (행복기숙사)",
-      }
+        example: "MAPP_2312012408 (천안), MAPP_2312012409 (아산), HAPPY_DORM_NUTRITION (행복기숙사)",
+      },
     });
   }
 
@@ -53,31 +53,26 @@ router.get("/idx/:chidx/:action", async (req, res) => {
   const { chidx, action } = req.params;
 
   // chidx와 action을 모두 사용하여 정확한 메뉴 조회
-  const sql = `SELECT * FROM TBL_Menu WHERE chidx = ? AND action = ? LIMIT 1`;
+  const sql = `SELECT * FROM TBL_Menu WHERE chidx = ? AND type = ? LIMIT 1`;
 
   try {
     const [menus] = await pool.execute(sql, [chidx, action]);
     if (menus.length === 0) {
       return res.status(404).json({
         error: "메뉴를 찾을 수 없습니다.",
-        details: { chidx, action }
+        details: { chidx, action },
       });
     }
 
     const menuData = menus[0];
-    const menuType = menuData.action; // action 정보 가져오기
+    const menuType = menuData.type; // type 정보 가져오기
 
     // 행복기숙사 여부 확인
-    const isHappyDorm = menuType === 'HAPPY_DORM_NUTRITION';
+    const isHappyDorm = menuType === "HAPPY_DORM_NUTRITION";
 
     // JSON 파일 경로 결정 (타입별로 다른 디렉토리)
     const baseDir = isHappyDorm ? "download_happy_dorm" : "download_menu";
-    const jsonPath = path.join(
-      process.cwd(),
-      baseDir,
-      String(chidx),
-      `${chidx}_detail.json`
-    );
+    const jsonPath = path.join(process.cwd(), baseDir, String(chidx), `${chidx}_detail.json`);
 
     let content = null;
     let shouldDownload = false;
@@ -101,7 +96,7 @@ router.get("/idx/:chidx/:action", async (req, res) => {
           content = await parseAndSaveHappyDormMenu(chidx);
         } else {
           // 일반 호서대 메뉴 처리
-          content = await parseAndSaveMenu(chidx, menuType);
+          content = await parseAndSaveCampusMenu(chidx, menuType);
         }
 
         console.log(`✅ [${chidx}] 세부 내용 다운로드 완료`);
@@ -135,32 +130,24 @@ router.get("/idx/:chidx/:action", async (req, res) => {
   }
 });
 
+// action 목록 (천안, 아산, 행복기숙사 목록)
+router.get("/actions", (req, res) => {
+  const actions = [
+    {
+      action: "MAPP_2312012408",
+      name: "천안",
+    },
+    {
+      action: "MAPP_2312012409",
+      name: "아산",
+    },
+    {
+      action: "HAPPY_DORM_NUTRITION",
+      name: "행복기숙사",
+    },
+  ];
 
-// action 목록 (천안, 아산, 당진, 행복기숙사 등의 목록)
-router.get("/actions", async (req, res) => {
-  try {
-    const [rows] = await pool.execute(`
-      SELECT DISTINCT type as action, 
-             CASE 
-               WHEN type = 'MAPP_2312012408' THEN '천안'
-               WHEN type = 'MAPP_2312012409' THEN '아산'
-               WHEN type = 'MAPP_2312012410' THEN '당진'
-               WHEN type = 'HAPPY_DORM_NUTRITION' THEN '행복기숙사'
-               ELSE type
-             END as name,
-             CASE 
-               WHEN type = 'HAPPY_DORM_NUTRITION' THEN 'happy_dorm'
-               ELSE 'general'
-             END as category
-      FROM TBL_Menu 
-      ORDER BY 
-        CASE WHEN type = 'HAPPY_DORM_NUTRITION' THEN 1 ELSE 0 END,
-        type
-    `);
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  res.json(actions);
 });
 
 // 검색 기능 (행복기숙사 포함)
@@ -183,7 +170,7 @@ router.get("/search", async (req, res) => {
     where.push("author LIKE ?");
     params.push(`%${author}%`);
   }
-  // action 검색 (천안, 아산, 당진, 행복기숙사 등)
+  // action 검색 (천안, 아산, 행복기숙사 등)
   if (action && action.trim()) {
     where.push("type = ?");
     params.push(action);
@@ -196,7 +183,6 @@ router.get("/search", async (req, res) => {
              CASE 
                WHEN type = 'MAPP_2312012408' THEN '천안'
                WHEN type = 'MAPP_2312012409' THEN '아산'
-               WHEN type = 'MAPP_2312012410' THEN '당진'
                WHEN type = 'HAPPY_DORM_NUTRITION' THEN '행복기숙사'
                ELSE type
              END as type_name
@@ -215,3 +201,4 @@ router.get("/search", async (req, res) => {
 });
 
 module.exports = router;
+

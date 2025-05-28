@@ -109,20 +109,13 @@ async function fetchAllNotices(tabName, categoryCode) {
 
       if (chidxList.length > 0) {
         const placeholders = chidxList.map(() => "?").join(",");
-        const [result] = await pool.query(
-          `SELECT chidx FROM TBL_Notice WHERE chidx IN (${placeholders})`,
-          chidxList
-        );
+        const [result] = await pool.query(`SELECT chidx FROM TBL_Notice WHERE chidx IN (${placeholders})`, chidxList);
         const existingChidxSet = new Set(result.map((r) => r.chidx));
-        rowsToInsert = rows.filter(
-          (r) => r.chidx && !existingChidxSet.has(r.chidx)
-        );
+        rowsToInsert = rows.filter((r) => r.chidx && !existingChidxSet.has(r.chidx));
 
         // 모두 중복이면 종료 (페이지 루프 break)
         if (rowsToInsert.length === 0) {
-          console.log(
-            `⚡️ ${tabName} - ${page} 페이지는 전부 중복. 이후 페이지 크롤링 중단`
-          );
+          console.log(`⚡️ ${tabName} - ${page} 페이지는 전부 중복. 이후 페이지 크롤링 중단`);
           break;
         }
       }

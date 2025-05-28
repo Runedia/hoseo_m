@@ -9,7 +9,7 @@ const HAPPY_DORM_CONFIG = {
   name: "행복기숙사",
   domain: "happydorm.hoseo.ac.kr",
   baseUrl: "https://happydorm.hoseo.ac.kr/board/nutrition/list",
-  viewUrl: "https://happydorm.hoseo.ac.kr/board/nutrition/view"
+  viewUrl: "https://happydorm.hoseo.ac.kr/board/nutrition/view",
 };
 
 function createViewLink(idx) {
@@ -28,7 +28,11 @@ async function parsePage($) {
 
     // 제목과 링크 추출
     const $titleLink = $item.find(".tit-link");
-    const title = $titleLink.text().trim().replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ');
+    const title = $titleLink
+      .text()
+      .trim()
+      .replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ");
     const href = $titleLink.attr("href") || "";
 
     // idx 추출 (URL에서)
@@ -54,7 +58,7 @@ async function parsePage($) {
         title: title,
         link: createViewLink(idx),
         author: author,
-        date: date
+        date: date,
       });
     }
   });
@@ -108,7 +112,7 @@ async function fetchHappyDormMenuItems() {
         break;
       }
 
-      const idxList = menuItems.map(item => item.idx);
+      const idxList = menuItems.map((item) => item.idx);
       let itemsToInsert = menuItems;
 
       // 중복 체크
@@ -118,8 +122,8 @@ async function fetchHappyDormMenuItems() {
           `SELECT chidx FROM TBL_Menu WHERE type = 'HAPPY_DORM_NUTRITION' AND chidx IN (${placeholders})`,
           idxList
         );
-        const existingIdxSet = new Set(result.map(r => r.chidx));
-        itemsToInsert = menuItems.filter(item => !existingIdxSet.has(item.idx));
+        const existingIdxSet = new Set(result.map((r) => r.chidx));
+        itemsToInsert = menuItems.filter((item) => !existingIdxSet.has(item.idx));
 
         // 모두 중복이면 종료
         if (itemsToInsert.length === 0) {
@@ -157,7 +161,6 @@ async function fetchHappyDormMenuItems() {
       } else {
         currentPage++;
       }
-
     } catch (err) {
       console.error(`❌ ${currentPage} 페이지 오류:`, err.message);
       break;
@@ -185,5 +188,4 @@ if (require.main === module) {
   })();
 }
 
-// export for use in other modules
 module.exports = { runHappyDormScraper };
