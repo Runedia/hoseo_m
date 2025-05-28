@@ -10,23 +10,37 @@ const { parseAndSaveHappyDormMenu } = require("@root/process/4_menu/get_menu_det
 
 // 메뉴 목록 (페이징)
 router.get("/list", async (req, res) => {
-  const { page = 1, pageSize = 20 } = req.query;
+  const { page = 1, pageSize = 20, action } = req.query;
+
+  // action 파라미터 필수 검증
+  if (!action) {
+    return res.status(400).json({
+      error: "action 파라미터는 필수입니다.",
+      details: {
+        required: true,
+        parameter: "action",
+        example: "MAPP_2312012408 (천안), MAPP_2312012409 (아산), MAPP_2312012410 (당진), HAPPY_DORM_NUTRITION (행복기숙사)",
+      }
+    });
+  }
+
   const offset = (page - 1) * pageSize;
   const sql = `
     SELECT idx, type, chidx, title, author, create_dt
     FROM TBL_Menu
+    WHERE type = ?
     ORDER BY chidx DESC
     LIMIT ? OFFSET ?
   `;
   try {
-    const [rows] = await pool.execute(sql, [String(pageSize), String(offset)]);
+    const [rows] = await pool.execute(sql, [action, String(pageSize), String(offset)]);
     res.json(rows);
   } catch (err) {
     res.status(500).json({
       error: err.message,
       details: {
         sql: sql,
-        parameters: [String(pageSize), String(offset)],
+        parameters: [action, String(pageSize), String(offset)],
         errno: err.errno,
         sqlState: err.sqlState,
       },
@@ -35,23 +49,23 @@ router.get("/list", async (req, res) => {
 });
 
 // 메뉴 상세 (본문/파일) - 타입별 자동 다운로드 기능
-router.get("/idx/:chidx/:type", async (req, res) => {
-  const { chidx, type } = req.params;
+router.get("/idx/:chidx/:action", async (req, res) => {
+  const { chidx, action } = req.params;
 
-  // chidx와 type을 모두 사용하여 정확한 메뉴 조회
-  const sql = `SELECT * FROM TBL_Menu WHERE chidx = ? AND type = ? LIMIT 1`;
+  // chidx와 action을 모두 사용하여 정확한 메뉴 조회
+  const sql = `SELECT * FROM TBL_Menu WHERE chidx = ? AND action = ? LIMIT 1`;
 
   try {
-    const [menus] = await pool.execute(sql, [chidx, type]);
+    const [menus] = await pool.execute(sql, [chidx, action]);
     if (menus.length === 0) {
       return res.status(404).json({
         error: "메뉴를 찾을 수 없습니다.",
-        details: { chidx, type }
+        details: { chidx, action }
       });
     }
 
     const menuData = menus[0];
-    const menuType = menuData.type; // type 정보 가져오기
+    const menuType = menuData.action; // action 정보 가져오기
 
     // 행복기숙사 여부 확인
     const isHappyDorm = menuType === 'HAPPY_DORM_NUTRITION';
@@ -93,7 +107,7 @@ router.get("/idx/:chidx/:type", async (req, res) => {
         console.log(`✅ [${chidx}] 세부 내용 다운로드 완료`);
 
         // ✅ JSON 저장 이후 다시 DB에서 최신 상태 조회
-        const [updated] = await pool.execute(sql, [chidx, type]);
+        const [updated] = await pool.execute(sql, [chidx, action]);
         if (updated.length > 0) menus[0] = updated[0];
       } catch (downloadError) {
         console.error(`❌ [${chidx}] 다운로드 실패:`, downloadError.message);
@@ -121,29 +135,6 @@ router.get("/idx/:chidx/:type", async (req, res) => {
   }
 });
 
-// action별 목록 (천안, 아산, 당진, 행복기숙사 등)
-router.get("/action/:action", async (req, res) => {
-  const { action } = req.params;
-  const { page = 1, pageSize = 20 } = req.query;
-  const offset = (page - 1) * pageSize;
-  const sql = `
-    SELECT idx, type, chidx, title, author, create_dt
-    FROM TBL_Menu
-    WHERE type = ?
-    ORDER BY chidx DESC
-    LIMIT ? OFFSET ?
-  `;
-  try {
-    const [rows] = await pool.execute(sql, [
-      action,
-      String(pageSize),
-      String(offset),
-    ]);
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // action 목록 (천안, 아산, 당진, 행복기숙사 등의 목록)
 router.get("/actions", async (req, res) => {
@@ -217,32 +208,6 @@ router.get("/search", async (req, res) => {
 
   try {
     const [rows] = await pool.query(sql, params);
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 통계 정보 API (타입별 메뉴 개수)
-router.get("/stats", async (req, res) => {
-  try {
-    const [rows] = await pool.execute(`
-      SELECT 
-        type,
-        CASE 
-          WHEN type = 'MAPP_2312012408' THEN '천안'
-          WHEN type = 'MAPP_2312012409' THEN '아산'
-          WHEN type = 'MAPP_2312012410' THEN '당진'
-          WHEN type = 'HAPPY_DORM_NUTRITION' THEN '행복기숙사'
-          ELSE type
-        END as name,
-        COUNT(*) as count,
-        COUNT(CASE WHEN download_completed = 1 THEN 1 END) as downloaded,
-        COUNT(CASE WHEN download_completed IS NULL OR download_completed = 0 THEN 1 END) as pending
-      FROM TBL_Menu 
-      GROUP BY type
-      ORDER BY count DESC
-    `);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });

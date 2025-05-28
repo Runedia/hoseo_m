@@ -8,11 +8,11 @@ const pool = require("@root/utils/db");
 const TAB_ACTIONS = {
   천안: "MAPP_2312012408",
   아산: "MAPP_2312012409",
-  당진: "MAPP_2312012410",
+  // 당진: "MAPP_2312012410",
 };
 
 function changeLink(chidx, action) {
-  return `https://www.hoseo.ac.kr/Home/BBSView.mbz?action=${action}&schIdx=${chidx}`;
+  return `http://www.hoseo.ac.kr/Home/BBSView.mbz?action=${action}&schIdx=${chidx}`;
 }
 
 async function parsePage($, tabName, action) {
