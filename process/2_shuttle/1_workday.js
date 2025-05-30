@@ -36,9 +36,7 @@ rows.each((i, row) => {
     // colspan이 1이면 정상적인 시간 데이터
     if (colspan === 1) {
       if (asanPosIndex <= 7) {
-        asanToCheonan[count][`pos${asanPosIndex}`] = isTimeFormat(value)
-          ? value
-          : "";
+        asanToCheonan[count][`pos${asanPosIndex}`] = isTimeFormat(value) ? value : "";
         asanPosIndex++;
       }
     } else {
@@ -67,9 +65,7 @@ rows.each((i, row) => {
     // colspan이 1이면 정상적인 시간 데이터
     if (colspan === 1) {
       if (cheonanPosIndex <= 7) {
-        cheonanToAsan[count][`pos${cheonanPosIndex}`] = isTimeFormat(value)
-          ? value
-          : "";
+        cheonanToAsan[count][`pos${cheonanPosIndex}`] = isTimeFormat(value) ? value : "";
         cheonanPosIndex++;
       }
     } else {
@@ -88,19 +84,10 @@ rows.each((i, row) => {
 });
 
 // 아산 → 천안 JSON 파일로 저장
-fs.writeFileSync(
-  "assets/셔틀(아캠_천캠_월금).json",
-  JSON.stringify(asanToCheonan, null, 2),
-  "utf-8"
-);
+fs.writeFileSync("assets/셔틀(아캠_천캠_월금).json", JSON.stringify(asanToCheonan, null, 2), "utf-8");
 
 // 천안 → 아산 JSON 파일로 저장
-fs.writeFileSync(
-  "assets/셔틀(천캠_아캠_월금).json",
-  JSON.stringify(cheonanToAsan, null, 2),
-  "utf-8"
-);
+fs.writeFileSync("assets/셔틀(천캠_아캠_월금).json", JSON.stringify(cheonanToAsan, null, 2), "utf-8");
 
-console.log(
-  '완료! "셔틀(아캠_천캠_월금).json"와 "셔틀(천캠_아캠_월금).json" 파일이 생성되었습니다.'
-);
+console.log('완료! "셔틀(아캠_천캠_월금).json"와 "셔틀(천캠_아캠_월금).json" 파일이 생성되었습니다.');
+

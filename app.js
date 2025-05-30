@@ -77,7 +77,7 @@ app.use(cors({ origin: "http://rukeras.com" }));
 app.use("/download_menu", express.static("download_menu"));
 app.use("/download_notice", express.static("download_notice"));
 app.use("/download_happy_dorm", express.static("download_happy_dorm"));
-app.use("/assets", express.static("assets")); // 학사일정 CSS 파일들을 위한 정적 파일 서빙
+app.use("/assets/static", express.static("assets/static"));
 
 app.use("/notice", noticeRouter);
 app.use("/shuttle", shuttleRouter);
@@ -98,4 +98,3 @@ app.use(function (err, req, res, next) {
 });
 
 module.exports = app;
-

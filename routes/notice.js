@@ -75,7 +75,7 @@ router.get("/idx/:chidx", async (req, res) => {
 
     // 첨부파일 조회
     const [files] = await pool.execute(
-      `SELECT file_type, file_name, origin_name, file_path, file_url 
+      `SELECT file_type, file_name, origin_name, file_path, file_url
        FROM tbl_noticefile WHERE notice_num = ?`,
       [chidx]
     );

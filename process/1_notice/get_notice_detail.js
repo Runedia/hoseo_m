@@ -71,7 +71,7 @@ async function downloadFileAndSaveDB(noticeNum, fileType, fileUrl, originName, d
   await pool.execute(
     `INSERT INTO tbl_noticefile (notice_num, file_type, file_name, origin_name, file_path, file_url)
      VALUES (?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE 
+     ON DUPLICATE KEY UPDATE
      file_type = VALUES(file_type),
      file_name = VALUES(file_name),
      origin_name = VALUES(origin_name),
@@ -179,8 +179,8 @@ async function processImages($, boardElement, chidx, downloadDir) {
 async function updateNoticeDownloadStatus(chidx, isSuccess, errorMessage = null) {
   try {
     await pool.execute(
-      `UPDATE tbl_notice 
-       SET download_completed = ?, 
+      `UPDATE tbl_notice
+       SET download_completed = ?,
            download_date = NOW(),
            download_error = ?
        WHERE chidx = ?`,
@@ -263,9 +263,9 @@ async function main() {
   try {
     // DB에서 아직 다운로드되지 않은 공지사항 목록 가져오기
     const sql = `
-      SELECT chidx FROM tbl_notice 
-      WHERE download_completed IS NULL OR download_completed = 0 
-      ORDER BY chidx DESC 
+      SELECT chidx FROM tbl_notice
+      WHERE download_completed IS NULL OR download_completed = 0
+      ORDER BY chidx DESC
       LIMIT 10
     `;
 
@@ -316,3 +316,4 @@ module.exports = {
   parseAndSaveNotice,
   main,
 };
+

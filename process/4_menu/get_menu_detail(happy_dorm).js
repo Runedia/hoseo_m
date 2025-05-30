@@ -66,8 +66,8 @@ async function downloadFileAndSaveDB(menuNum, fileType, fileUrl, originName, dow
   await pool.execute(
     `INSERT INTO tbl_menufile (menu_num, file_type, file_name, origin_name, file_path, file_url)
      VALUES (?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE 
-     file_type = VALUES(file_type), file_name = VALUES(file_name), 
+     ON DUPLICATE KEY UPDATE
+     file_type = VALUES(file_type), file_name = VALUES(file_name),
      origin_name = VALUES(origin_name), file_path = VALUES(file_path), file_url = VALUES(file_url)`,
     [menuNum, fileType, filenameSafe, originName, urlPath, fileUrl]
   );
@@ -169,7 +169,7 @@ async function processImages($, boardElement, idx, downloadDir) {
 async function updateMenuDownloadStatus(idx, isSuccess, errorMessage = null) {
   try {
     await pool.execute(
-      `UPDATE TBL_Menu 
+      `UPDATE TBL_Menu
        SET download_completed = ?, download_date = NOW(), download_error = ?
        WHERE chidx = ? AND type = 'HAPPY_DORM_NUTRITION'`,
       [isSuccess ? 1 : 0, errorMessage, idx]
@@ -184,17 +184,17 @@ async function parseAndSaveHappyDormMenu(idx) {
   try {
     const url = `${BASE_URL}/board/nutrition/view?idx=${idx}`;
     console.log(`[${idx}] 요청 URL: ${url}`);
-    
+
     const { data: html } = await axios.get(url, { headers });
     console.log(`[${idx}] 응답 받음 - HTML 길이: ${html.length}바이트`);
-    
+
     const $ = cheerio.load(html);
-    
+
     // 본문 영역 찾기 (우선순위 순)
     const selectors = ['.board_view', '.board-view', '.board-content', '.content'];
     let boardContent = null;
     let usedSelector = null;
-    
+
     for (const selector of selectors) {
       const element = $(selector);
       if (element.length > 0 && element.html() && element.text().trim()) {
@@ -204,12 +204,12 @@ async function parseAndSaveHappyDormMenu(idx) {
         break;
       }
     }
-    
+
     // 대안 방법: 가장 긴 div 찾기
     if (!boardContent) {
       let bestDiv = null;
       let maxTextLength = 0;
-      
+
       $('div').each((i, el) => {
         const $div = $(el);
         const text = $div.text().trim();
@@ -218,7 +218,7 @@ async function parseAndSaveHappyDormMenu(idx) {
           bestDiv = $div;
         }
       });
-      
+
       if (bestDiv) {
         boardContent = bestDiv;
         usedSelector = 'div (최대 텍스트)';
@@ -231,7 +231,7 @@ async function parseAndSaveHappyDormMenu(idx) {
       await updateMenuDownloadStatus(idx, false, "본문 영역을 찾을 수 없음");
       throw new Error("본문 영역을 찾을 수 없습니다.");
     }
-    
+
     console.log(`[${idx}] 사용된 선택자: ${usedSelector}`);
 
     // 저장 디렉토리 생성
@@ -278,10 +278,10 @@ async function parseAndSaveHappyDormMenu(idx) {
 async function runHappyDormDetailScraper() {
   try {
     const sql = `
-      SELECT chidx FROM TBL_Menu 
-      WHERE type = 'HAPPY_DORM_NUTRITION' 
+      SELECT chidx FROM TBL_Menu
+      WHERE type = 'HAPPY_DORM_NUTRITION'
         AND (download_completed IS NULL OR download_completed = 0)
-      ORDER BY chidx DESC 
+      ORDER BY chidx DESC
       LIMIT 10
     `;
 

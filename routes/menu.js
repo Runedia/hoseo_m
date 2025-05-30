@@ -112,7 +112,7 @@ router.get("/idx/:chidx/:action", async (req, res) => {
 
     // 첨부파일 조회
     const [files] = await pool.execute(
-      `SELECT file_type, file_name, origin_name, file_path, file_url 
+      `SELECT file_type, file_name, origin_name, file_path, file_url
        FROM tbl_menufile WHERE menu_num = ?`,
       [chidx]
     );
@@ -180,7 +180,7 @@ router.get("/search", async (req, res) => {
 
   const sql = `
       SELECT idx, type, chidx, title, author, create_dt,
-             CASE 
+             CASE
                WHEN type = 'MAPP_2312012408' THEN '천안'
                WHEN type = 'MAPP_2312012409' THEN '아산'
                WHEN type = 'HAPPY_DORM_NUTRITION' THEN '행복기숙사'
