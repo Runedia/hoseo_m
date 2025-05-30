@@ -317,7 +317,7 @@ async function getCalendar() {
       const cssPath = await downloadCss(href);
       if (cssPath) {
         // assets 경로를 사용하여 올바른 정적 파일 경로 생성
-        linkTags.push(`    <link href="/assets/${cssPath}" rel="stylesheet" type="text/css" />`);
+        linkTags.push(`    <link href="/assets/static/${cssPath}" rel="stylesheet" type="text/css" />`);
       }
     }
 
@@ -360,7 +360,8 @@ async function getCalendar() {
     }
 
     // 7. 결과 HTML 생성
-    const resultHtml = `<!DOCTYPE html>
+    const resultHtml = `
+<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
