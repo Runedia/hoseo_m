@@ -51,7 +51,6 @@ GET /eduguide/calendar
 {
   "title": "호서대학교 학사일정",
   "generatedAt": "2025-05-30T12:00:00.000Z",
-  "structure": "nested",
   "description": "년도 > 월 > 일 > 이벤트번호 구조",
   "data": {
     "2025": {
@@ -110,7 +109,6 @@ GET /eduguide/curriculum?type=double
   "title": "호서대학교 교육과정",
   "type": "basic",
   "generatedAt": "2025-05-30T12:00:00.000Z",
-  "structure": "hierarchical",
   "description": "섹션 > 텍스트 및 하위 내용 구조",
   "data": {
     "1": {
@@ -210,7 +208,6 @@ GET /eduguide/class?type=attendance
   "title": "호서대학교 수강신청",
   "type": "regist",
   "generatedAt": "2025-05-30T12:00:00.000Z",
-  "structure": "hierarchical",
   "description": "섹션 > 텍스트 및 하위 내용 구조",
   "data": {
     "1": {
@@ -312,7 +309,6 @@ GET /eduguide/record?type=change_major
   "title": "호서대학교 평가",
   "type": "evaluation",
   "generatedAt": "2025-05-30T12:00:00.000Z",
-  "structure": "hierarchical",
   "description": "섹션 > 텍스트 및 하위 내용 구조",
   "data": {
     "1": {
@@ -398,7 +394,6 @@ GET /eduguide/record?type=change_major
 | `title` | string | 데이터 제목 |
 | `type` | string | 요청된 타입 (해당하는 경우) |
 | `generatedAt` | datetime | 생성 시간 (ISO 8601) |
-| `structure` | string | 데이터 구조 타입 (`nested` 또는 `hierarchical`) |
 | `description` | string | 데이터 구조 설명 |
 | `data` | object | 실제 데이터 |
 

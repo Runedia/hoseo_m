@@ -51,7 +51,6 @@ router.get("/calendar", async (req, res) => {
     const response = {
       title: "호서대학교 학사일정",
       generatedAt: new Date().toISOString(),
-      structure: "nested",
       description: "년도 > 월 > 일 > 이벤트번호 구조",
       data: calendarData,
     };
@@ -117,7 +116,6 @@ router.get("/curriculum", async (req, res) => {
       title: `호서대학교 ${config.name}`,
       type: type,
       generatedAt: new Date().toISOString(),
-      structure: "hierarchical",
       description: "섹션 > 텍스트 및 하위 내용 구조",
       data: curriculumData,
     };
@@ -212,7 +210,6 @@ router.get("/class", async (req, res) => {
       title: `호서대학교 ${config.name}`,
       type: type,
       generatedAt: new Date().toISOString(),
-      structure: "hierarchical",
       description: "섹션 > 텍스트 및 하위 내용 구조",
       data: classData,
     };
@@ -307,7 +304,6 @@ router.get("/record", async (req, res) => {
       title: `호서대학교 ${config.name}`,
       type: type,
       generatedAt: new Date().toISOString(),
-      structure: "hierarchical",
       description: "섹션 > 텍스트 및 하위 내용 구조",
       data: recordData,
     };
@@ -353,4 +349,3 @@ router.get("/record/types", (req, res) => {
 });
 
 module.exports = router;
-
