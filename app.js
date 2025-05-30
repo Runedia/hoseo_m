@@ -11,6 +11,7 @@ var menuRouter = require("@root/routes/menu");
 var campusMapRouter = require("@root/routes/campus_map");
 var eduguideRouter = require("@root/routes/eduguide");
 var logsRouter = require("@root/routes/logs");
+var departmentsRouter = require("@root/routes/departments");
 const path = require("path");
 const fs = require("fs");
 
@@ -86,6 +87,7 @@ app.use("/menu", menuRouter);
 app.use("/campus_map", campusMapRouter);
 app.use("/eduguide", eduguideRouter);
 app.use("/logs", logsRouter);
+app.use("/departments", departmentsRouter);
 
 // 404 핸들링
 app.use(function (req, res, next) {

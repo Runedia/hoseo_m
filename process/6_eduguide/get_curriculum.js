@@ -148,4 +148,3 @@ module.exports = {
   CURRICULUM_CONFIGS,
   OUTPUT_DIR,
 };
-
