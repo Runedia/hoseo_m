@@ -5,7 +5,7 @@ const cheerio = require("cheerio");
 const fs = require("fs-extra");
 const path = require("path");
 const pool = require("@root/utils/db");
-const logger = require("@root/utils/logger");
+const { logger } = require("@root/utils/logger");
 
 const BASE_URL = "https://www.hoseo.ac.kr";
 const DOWNLOAD_ROOT = path.resolve(process.cwd(), "download_menu");
