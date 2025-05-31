@@ -4,6 +4,7 @@ var express = require("express");
 var logger = require("morgan");
 const cors = require("cors");
 const { accessLogger } = require("@root/utils/logger");
+const helmet = require("helmet");
 
 var noticeRouter = require("@root/routes/notice");
 var shuttleRouter = require("@root/routes/shuttle");
@@ -12,11 +13,144 @@ var campusMapRouter = require("@root/routes/campus_map");
 var eduguideRouter = require("@root/routes/eduguide");
 var logsRouter = require("@root/routes/logs");
 var departmentsRouter = require("@root/routes/departments");
+
 const path = require("path");
 const fs = require("fs");
 
+// 서버 시작 시 assets/static 폴더 삭제
+const clearStaticFolder = () => {
+  const staticPath = path.join(__dirname, "assets", "static");
+
+  try {
+    if (fs.existsSync(staticPath)) {
+      fs.rmSync(staticPath, { recursive: true, force: true });
+      console.log("[시작] assets/static 폴더를 삭제했습니다.");
+    } else {
+      console.log("[시작] assets/static 폴더가 존재하지 않습니다.");
+    }
+  } catch (error) {
+    console.error("[에러] assets/static 폴더 삭제 실패:", error.message);
+  }
+};
+
+// 폴더 삭제 실행
+clearStaticFolder();
+
 var app = express();
 app.use(logger("dev"));
+
+// 환경변수 안전 처리
+const getAllowedHosts = () => {
+  const hostsEnv = process.env.ALLOWED_HOSTS;
+
+  if (!hostsEnv) {
+    console.warn("[경고] ALLOWED_HOSTS 환경변수가 설정되지 않았습니다. 기본값을 사용합니다.");
+
+    if (process.env.NODE_ENV === "production") {
+      return ["rukeras.com"]; // 운영 환경 기본값
+    } else {
+      return ["localhost", "127.0.0.1", "rukeras.com"]; // 개발 환경 기본값
+    }
+  }
+
+  const hosts = hostsEnv
+    .split(",")
+    .map((host) => host.trim())
+    .filter((host) => host);
+
+  if (hosts.length === 0) {
+    console.error("[에러] ALLOWED_HOSTS가 비어있습니다!");
+    process.exit(1);
+  }
+
+  return hosts;
+};
+
+const allowedHosts = getAllowedHosts();
+console.log(`[설정] 허용된 호스트:`, allowedHosts);
+
+// 보안 헤더 설정 (Helmet 사용)
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'none'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false, // API 서버에서는 비활성화
+    hsts: (() => {
+      // HSTS 설정 로직
+      const enableHSTS = process.env.ENABLE_HSTS === "true";
+      const isProduction = process.env.NODE_ENV === "production";
+
+      if (enableHSTS || (isProduction && process.env.ENABLE_HSTS !== "false")) {
+        return {
+          maxAge: 31536000, // 1년
+          includeSubDomains: true,
+        };
+      }
+      return false;
+    })(),
+  })
+);
+
+// HSTS 설정 로그
+const hstsEnabled = (() => {
+  const enableHSTS = process.env.ENABLE_HSTS === "true";
+  const isProduction = process.env.NODE_ENV === "production";
+  return enableHSTS || (isProduction && process.env.ENABLE_HSTS !== "false");
+})();
+
+console.log("[보안] Helmet으로 보안 헤더가 설정되었습니다.");
+console.log(`[보안] HSTS (HTTPS 강제): ${hstsEnabled ? "활성화" : "비활성화"}`);
+
+// 호스트 검증 미들웨어
+const validateHost = (req, res, next) => {
+  const host = req.get("Host");
+
+  if (!host) {
+    return res.status(400).json({ error: "Host header is required" });
+  }
+
+  // 포트 번호 제거 (예: localhost:3000 -> localhost)
+  const hostname = host.split(":")[0];
+
+  if (!allowedHosts.includes(hostname)) {
+    // IP 추출 및 정리 (기존 로깅 미들웨어와 동일한 로직)
+    const ip = req.headers["x-forwarded-for"] || req.connection.remoteAddress || req.ip;
+
+    const cleanIP = (ip) => {
+      if (ip.startsWith("::ffff:")) {
+        return ip.replace("::ffff:", "");
+      }
+      if (ip === "::1") {
+        return "127.0.0.1";
+      }
+      return ip;
+    };
+
+    const clientIP = cleanIP(ip);
+
+    console.log(`[호스트 차단] IP: ${clientIP} | Host: ${host} | ${req.method} ${req.originalUrl}`);
+    return res.status(403).json({
+      error: "Access denied",
+      message: "Direct IP access or unauthorized domain access is not allowed",
+    });
+  }
+
+  next();
+};
+
+// 호스트 검증 적용
+app.use(validateHost);
 
 // IP 로깅을 위한 미들웨어
 app.use((req, res, next) => {
@@ -102,3 +236,4 @@ app.use(function (err, req, res, next) {
 });
 
 module.exports = app;
+
