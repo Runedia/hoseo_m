@@ -18,8 +18,9 @@ const path = require("path");
 const fs = require("fs");
 
 // 서버 시작 시 assets/static 폴더 삭제
+// 하루에 한번 리붓을 통한 정보 갱신
 const clearStaticFolder = () => {
-  const staticPath = path.join(__dirname, "assets", "static");
+  const staticPath = path.join(process.cwd(), "assets", "static");
 
   try {
     if (fs.existsSync(staticPath)) {
@@ -34,7 +35,7 @@ const clearStaticFolder = () => {
 };
 
 // 폴더 삭제 실행
-clearStaticFolder();
+// clearStaticFolder();
 
 var app = express();
 app.use(logger("dev"));
@@ -236,4 +237,3 @@ app.use(function (err, req, res, next) {
 });
 
 module.exports = app;
-

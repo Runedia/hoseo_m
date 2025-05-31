@@ -271,23 +271,11 @@ async function extractDepartmentList() {
       }
     });
 
-    console.log("📊 대학별 학과/학부 수:");
-    Object.entries(collegeStats).forEach(([college, count]) => {
-      const tracks = trackStats[college] || 0;
-      console.log(`   ${college}: ${count}개 학과/학부, ${tracks}개 트랙`);
-    });
-
     // JSON 파일로 저장
-    const jsonPath = await saveDepartmentJson(departments);
-    const simpleJsonPath = await saveSimpleDepartmentJson(departments);
+    await saveDepartmentJson(departments);
+    await saveSimpleDepartmentJson(departments);
 
     console.log("📊 크롤링 완료:");
-    console.log(`   총 대학: ${Object.keys(collegeStats).length}개`);
-    console.log(`   총 학과/학부: ${Object.values(collegeStats).reduce((a, b) => a + b, 0)}개`);
-    console.log(`   총 트랙: ${Object.values(trackStats).reduce((a, b) => a + b, 0)}개`);
-    console.log(`   전체: ${departments.length}개`);
-    console.log(`   상세 JSON: ${jsonPath}`);
-    console.log(`   간단 JSON: ${simpleJsonPath}`);
 
     return departments;
   } catch (err) {
