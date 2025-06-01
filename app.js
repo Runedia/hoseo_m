@@ -73,19 +73,7 @@ console.log(`[설정] 허용된 호스트:`, allowedHosts);
 // 보안 헤더 설정 (Helmet 사용)
 app.use(
   helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: ["'self'"],
-        fontSrc: ["'self'"],
-        objectSrc: ["'none'"],
-        mediaSrc: ["'self'"],
-        frameSrc: ["'none'"],
-      },
-    },
+    contentSecurityPolicy: false, // REST API 서버에서는 CSP 비활성화
     crossOriginEmbedderPolicy: false, // API 서버에서는 비활성화
     hsts: (() => {
       // HSTS 설정 로직
@@ -210,7 +198,14 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-app.use(cors({ origin: "http://rukeras.com" }));
+app.use(
+  cors({
+    origin: ["http://rukeras.com", "https://rukeras.com"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    credentials: true,
+  })
+);
 app.use("/download_menu", express.static("download_menu"));
 app.use("/download_notice", express.static("download_notice"));
 app.use("/download_happy_dorm", express.static("download_happy_dorm"));
@@ -235,5 +230,9 @@ app.use(function (err, req, res, next) {
     error: err.message || "Internal Server Error",
   });
 });
+
+// 스케줄러 시작
+const { startScheduler } = require("@root/utils/scheduler");
+startScheduler();
 
 module.exports = app;
