@@ -137,7 +137,7 @@ node ./bin/www
 ## 📊 API 엔드포인트
 
 ### 🔔 공지사항 API
-> 📖 **상세 문서**: [공지사항 API 문서](./rest_api_docs/notice.md)
+> 📖 **상세 문서**: [공지사항 API 문서](./rest_api_docs/notice_api.md)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -163,7 +163,7 @@ GET /notice/search?title=휴강&author=교무처&type=CTG_17082400011
 ```
 
 ### 🍽️ 식단표 API
-> 📖 **상세 문서**: [식단표 API 문서](./rest_api_docs/menu.md)
+> 📖 **상세 문서**: [식단표 API 문서](./rest_api_docs/menu_api.md)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -172,7 +172,7 @@ GET /notice/search?title=휴강&author=교무처&type=CTG_17082400011
 | GET | `/menu/detail/:date` | 특정 날짜 식단 상세 |
 
 ### 🚌 셔틀버스 API
-> 📖 **상세 문서**: [셔틀버스 API 문서](./rest_api_docs/shuttle.md)
+> 📖 **상세 문서**: [셔틀버스 API 문서](./rest_api_docs/shuttle_api.md)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -182,7 +182,7 @@ GET /notice/search?title=휴강&author=교무처&type=CTG_17082400011
 | GET | `/shuttle/sunday` | 일요일/공휴일 운행 시간 |
 
 ### 🏫 학과 정보 API
-> 📖 **상세 문서**: [학과 정보 API 문서](./rest_api_docs/departments.md)
+> 📖 **상세 문서**: [학과 정보 API 문서](./rest_api_docs/departments_api.md)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -198,7 +198,7 @@ GET /notice/search?title=휴강&author=교무처&type=CTG_17082400011
 | GET | `/campus_map/cheonan` | 천안캠퍼스 지도 정보 |
 
 ### 📚 교육과정 API
-> 📖 **상세 문서**: [교육과정 API 문서](./rest_api_docs/eduguide.md)
+> 📖 **상세 문서**: [교육과정 API 문서](./rest_api_docs/eduguide_api.md)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -206,7 +206,6 @@ GET /notice/search?title=휴강&author=교무처&type=CTG_17082400011
 | GET | `/eduguide/schedule` | 학사일정 |
 
 ### 📝 로그 조회 API
-> 📖 **상세 문서**: [로그 API 문서](./rest_api_docs/logs.md)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
