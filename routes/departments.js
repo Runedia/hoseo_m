@@ -90,51 +90,40 @@ router.get("/info", async (req, res) => {
       });
     }
 
+    // /list가 실행되지 않았다면 먼저 실행 (학과 기본 정보 확보)
+    const simpleJsonPath = path.join(process.cwd(), "assets", "static", "departments_simple.json");
+    if (!fs.existsSync(simpleJsonPath)) {
+      try {
+        await extractDepartmentList();
+      } catch (generateError) {
+        return res.status(500).json({
+          error: "학과 기본 정보를 생성하는 중 오류가 발생했습니다.",
+          details: generateError.message,
+          suggestion: "잠시 후 다시 시도하거나 관리자에게 문의하세요.",
+        });
+      }
+    }
+
     // 상세 학과 정보가 저장된 JSON 파일 경로
     const detailedJsonPath = path.join(process.cwd(), "assets", "static", "departments_detailed.json");
 
-    // 파일 존재 여부 확인
-    if (!fs.existsSync(detailedJsonPath)) {
-      // 파일이 없으면 간략 정보에서 검색
-      const simpleJsonPath = path.join(process.cwd(), "assets", "static", "departments_simple.json");
+    // 상세 정보 파일이 있으면 먼저 확인
+    if (fs.existsSync(detailedJsonPath)) {
+      const detailedData = JSON.parse(fs.readFileSync(detailedJsonPath, "utf-8"));
+      const cachedDepartment = detailedData.find((d) => d.name === dept);
 
-      if (!fs.existsSync(simpleJsonPath)) {
-        return res.status(404).json({
-          error: "학과 정보 파일을 찾을 수 없습니다.",
-          suggestion: "먼저 학과 정보를 크롤링해주세요.",
+      if (cachedDepartment) {
+        return res.json({
+          message: "학과 정보를 성공적으로 가져왔습니다.",
+          data: cachedDepartment,
+          cached: true,
         });
       }
-
-      const simpleData = JSON.parse(fs.readFileSync(simpleJsonPath, "utf-8"));
-      const department = simpleData.find((d) => d.name === dept);
-
-      if (!department) {
-        return res.status(404).json({
-          error: `'${dept}' 학과를 찾을 수 없습니다.`,
-          suggestion: "정확한 학과명을 입력해주세요.",
-        });
-      }
-
-      // 발견한 학과를 크롤링
-      const crawler = new DepartmentCrawler();
-      const detailedInfo = await crawler.crawlDepartmentDetail(department);
-
-      if (!detailedInfo) {
-        return res.status(500).json({
-          error: `'${dept}' 학과 정보를 가져오는데 실패했습니다.`,
-          suggestion: "잠시 후 다시 시도해주세요.",
-        });
-      }
-
-      return res.json({
-        message: "학과 정보를 성공적으로 가져왔습니다.",
-        data: detailedInfo,
-      });
     }
 
-    // 상세 정보 파일이 있으면 해당 파일에서 학과 찾기
-    const detailedData = JSON.parse(fs.readFileSync(detailedJsonPath, "utf-8"));
-    const department = detailedData.find((d) => d.name === dept);
+    // 캐시된 데이터가 없으면 간략 정보에서 검색 후 크롤링
+    const simpleData = JSON.parse(fs.readFileSync(simpleJsonPath, "utf-8"));
+    const department = simpleData.find((d) => d.name === dept);
 
     if (!department) {
       return res.status(404).json({
@@ -143,9 +132,33 @@ router.get("/info", async (req, res) => {
       });
     }
 
+    // 발견한 학과를 크롤링
+    const crawler = new DepartmentCrawler();
+    const detailedInfo = await crawler.crawlDepartmentDetail(department);
+
+    if (!detailedInfo) {
+      return res.status(500).json({
+        error: `'${dept}' 학과 정보를 가져오는데 실패했습니다.`,
+        suggestion: "잠시 후 다시 시도해주세요.",
+      });
+    }
+
+    // 새로 크롤링한 정보를 기존 상세 정보 파일에 추가
+    let allDetailedData = [];
+    if (fs.existsSync(detailedJsonPath)) {
+      allDetailedData = JSON.parse(fs.readFileSync(detailedJsonPath, "utf-8"));
+    }
+
+    // 새 데이터 추가
+    allDetailedData.push(detailedInfo);
+
+    // 파일에 저장
+    fs.writeFileSync(detailedJsonPath, JSON.stringify(allDetailedData, null, 2), "utf-8");
+
     return res.json({
       message: "학과 정보를 성공적으로 가져왔습니다.",
-      data: department,
+      data: detailedInfo,
+      cached: false,
     });
   } catch (error) {
     console.error("학과 상세 정보 API 오류:", error);
