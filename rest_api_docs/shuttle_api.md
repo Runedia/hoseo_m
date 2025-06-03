@@ -13,6 +13,8 @@
 - 요일별 시간표 지원 (평일, 토요일, 일요일/공휴일)
 - 메모리 캐싱으로 빠른 응답 속도
 - 실시간 시간표 조회 기능
+- **불완전한 시간표 자동 필터링** (pos1~pos7 중 하나라도 비어있으면 제외)
+- **연속 버스 번호 자동 할당** (1부터 시작하는 연속 번호)
 
 ## 지원 노선
 
@@ -60,25 +62,35 @@ GET /shuttle/schedule?date=2025-01-20&route=1
     "dayType": "weekday",
     "route": "1",
     "schedule": {
-      "error": {
-        "pos1": "",
-        "pos7": ""
-      },
-      "bus_001": {
+      "1": {
+        "origin_idx": "1",
         "pos1": "07:30",
+        "pos2": "07:35",
+        "pos3": "07:40",
+        "pos4": "07:50",
+        "pos5": "08:00",
+        "pos6": "08:10",
         "pos7": "08:15"
       },
-      "bus_002": {
+      "2": {
+        "origin_idx": "3",
         "pos1": "08:30",
+        "pos2": "08:35",
+        "pos3": "08:40",
+        "pos4": "08:50",
+        "pos5": "09:00",
+        "pos6": "09:10",
         "pos7": "09:15"
       },
-      "bus_003": {
+      "3": {
+        "origin_idx": "5",
         "pos1": "09:30",
+        "pos2": "09:35",
+        "pos3": "09:40",
+        "pos4": "09:50",
+        "pos5": "10:00",
+        "pos6": "10:10",
         "pos7": "10:15"
-      },
-      "bus_004": {
-        "pos1": "10:30",
-        "pos7": "11:15"
       }
     }
   },
@@ -88,10 +100,34 @@ GET /shuttle/schedule?date=2025-01-20&route=1
 
 #### 데이터 구조 설명
 
+- **Key (1, 2, 3...)**: 연속된 버스 번호 (1부터 자동 할당)
+- **origin_idx**: 원본 데이터의 버스 번호 (detail API에서 사용)
 - **pos1**: 출발지 시간
+- **pos2~pos6**: 중간 정거장 시간
 - **pos7**: 도착지 시간
-- **bus_XXX**: 각 버스 운행 번호
-- **error**: 시스템 에러나 운행 중단 정보 (일반적으로 빈 값)
+
+#### 필터링 로직
+
+⚠️ **중요**: pos1부터 pos7까지 모든 시간이 입력된 시간표만 응답에 포함됩니다.
+- 하나라도 비어있거나 공백인 시간표는 자동으로 제외
+- 연속된 번호(1, 2, 3...)로 자동 재할당
+
+**예시 필터링:**
+```json
+// 원본 데이터
+{
+  "bus_001": { "pos1": "07:30", "pos2": "07:35", ..., "pos7": "08:15" }, // ✅ 모든 pos 완성
+  "bus_002": { "pos1": "", "pos2": "08:35", ..., "pos7": "09:15" },      // ❌ pos1 비어있음 → 제외
+  "bus_003": { "pos1": "08:30", "pos2": "08:35", ..., "pos7": "09:15" }, // ✅ 모든 pos 완성
+  "bus_004": { "pos1": "09:30", "pos2": "", ..., "pos7": "10:15" }       // ❌ pos2 비어있음 → 제외
+}
+
+// 필터링 후 응답
+{
+  "1": { "origin_idx": "1", "pos1": "07:30", ..., "pos7": "08:15" },
+  "2": { "origin_idx": "3", "pos1": "08:30", ..., "pos7": "09:15" }
+}
+```
 
 #### Error Response (400)
 ```json
@@ -121,7 +157,7 @@ GET /shuttle/schedule?date=2025-01-20&route=1
 
 ### 2. 셔틀버스 상세 시간표 조회
 
-특정 버스 운행의 상세 시간표를 조회합니다. (현재 구현 중)
+특정 버스 운행의 상세 시간표를 조회합니다.
 
 **Endpoint:** `GET /shuttle/schedule/detail`
 
@@ -131,10 +167,13 @@ GET /shuttle/schedule?date=2025-01-20&route=1
 |-----------|------|----------|-------------|
 | `date` | string | ✅ | 조회 날짜 (YYYY-MM-DD 형식) |
 | `route` | string | ✅ | 노선 번호 (1: 아산→천안, 2: 천안→아산) |
-| `schedule` | string | ✅ | 버스 운행 번호 (예: bus_001) |
+| `schedule` | string | ✅ | **원본 버스 번호** (origin_idx 값 사용) |
+
+⚠️ **중요**: `schedule` 파라미터는 `/schedule` API 응답의 `origin_idx` 값을 사용해야 합니다.
 
 #### Example Request
 ```bash
+# /schedule에서 응답받은 origin_idx 값 사용
 GET /shuttle/schedule/detail?date=2025-01-20&route=1&schedule=bus_001
 ```
 
@@ -227,7 +266,7 @@ GET /shuttle/cache/status
 | Field | Type | Description |
 |-------|------|-------------|
 | `loaded` | boolean | 캐시에 데이터가 로드되었는지 여부 |
-| `scheduleCount` | number | 로드된 시간표 개수 |
+| `scheduleCount` | number | 로드된 시간표 개수 (필터링 전 전체 개수) |
 | `isDefault` | boolean | 기본값 데이터인지 여부 (파일 로딩 실패 시 true) |
 
 ---
@@ -244,8 +283,24 @@ GET /shuttle/cache/status
     "dayType": "weekday|saturday|sunday",
     "route": "1|2",
     "schedule": {
-      "bus_001": {
+      "1": {
+        "origin_idx": "원본_버스_번호",
         "pos1": "HH:MM",
+        "pos2": "HH:MM",
+        "pos3": "HH:MM",
+        "pos4": "HH:MM",
+        "pos5": "HH:MM",
+        "pos6": "HH:MM",
+        "pos7": "HH:MM"
+      },
+      "2": {
+        "origin_idx": "원본_버스_번호",
+        "pos1": "HH:MM",
+        "pos2": "HH:MM",
+        "pos3": "HH:MM",
+        "pos4": "HH:MM",
+        "pos5": "HH:MM",
+        "pos6": "HH:MM",
         "pos7": "HH:MM"
       }
     }
@@ -263,7 +318,7 @@ GET /shuttle/cache/status
     "date": "YYYY-MM-DD",
     "dayType": "weekday|saturday|sunday", 
     "route": "1|2",
-    "scheduleNumber": "bus_XXX",
+    "scheduleNumber": "원본_버스_번호",
     "detail": {
       "pos1": "HH:MM",  // 출발지
       "pos2": "HH:MM",  // 정거장 2
@@ -326,8 +381,51 @@ assets/
     "pos5": "08:00",
     "pos6": "08:10",
     "pos7": "08:15"
+  },
+  "bus_002": {
+    "pos1": "",      // ❌ 비어있음 → 필터링으로 제외됨
+    "pos2": "08:35", 
+    "pos3": "08:40",
+    "pos4": "08:50",
+    "pos5": "09:00",
+    "pos6": "09:10",
+    "pos7": "09:15"
   }
 }
+```
+
+---
+
+## 프론트엔드 연동 가이드
+
+### 1. 시간표 목록 표시
+
+```javascript
+// 1. 시간표 조회
+const response = await fetch('/shuttle/schedule?date=2025-01-20&route=1');
+const data = await response.json();
+
+// 2. 연속된 번호로 표시
+Object.entries(data.data.schedule).forEach(([busNumber, schedule]) => {
+  console.log(`버스 ${busNumber}번: ${schedule.pos1} → ${schedule.pos7}`);
+  // 출력: "버스 1번: 07:30 → 08:15"
+  //      "버스 2번: 08:30 → 09:15"
+});
+```
+
+### 2. 상세 시간표 조회
+
+```javascript
+// 3. 상세 조회 시 origin_idx 사용
+const busNumber = "1"; // 사용자가 선택한 연속 번호
+const originIdx = data.data.schedule[busNumber].origin_idx; // "bus_001"
+
+const detailResponse = await fetch(
+  `/shuttle/schedule/detail?date=2025-01-20&route=1&schedule=${originIdx}`
+);
+const detailData = await detailResponse.json();
+
+console.log('상세 시간표:', detailData.data.detail);
 ```
 
 ---
@@ -380,6 +478,7 @@ curl "http://localhost:3000/shuttle/schedule?date=2025-01-26&route=1"
 
 ### 4. 특정 버스 상세 시간표 조회
 ```bash
+# origin_idx 값 사용
 curl "http://localhost:3000/shuttle/schedule/detail?date=2025-01-20&route=1&schedule=bus_001"
 ```
 
@@ -401,6 +500,16 @@ curl "http://localhost:3000/shuttle/cache/status"
 - 빠른 응답 속도 보장
 - 파일 I/O 최소화
 
+### 🔍 **자동 필터링**
+- pos1~pos7 중 하나라도 비어있는 시간표 자동 제외
+- 완전한 시간표만 응답에 포함
+- 데이터 품질 보장
+
+### 📊 **연속 번호 할당**
+- 필터링 후 1부터 시작하는 연속된 번호 자동 할당
+- origin_idx로 원본 데이터 추적 가능
+- 프론트엔드에서 일관된 번호 사용 가능
+
 ### 🛡️ **견고한 에러 처리**
 - 파일 로딩 실패 시 기본값 제공
 - 상세한 에러 메시지 제공
@@ -408,7 +517,7 @@ curl "http://localhost:3000/shuttle/cache/status"
 
 ### 📍 **정거장별 시간 제공**
 - pos1 (출발지) ~ pos7 (도착지) 각 정거장별 시간
-- 기본 조회는 출발지/도착지만, 상세 조회는 전체 정거장
+- 기본 조회와 상세 조회 모두 전체 정거장 정보 제공
 
 ---
 
@@ -422,7 +531,9 @@ curl "http://localhost:3000/shuttle/cache/status"
 
 4. **노선 제한**: 현재 노선 1번(아산→천안), 2번(천안→아산)만 지원됩니다.
 
-5. **상세 시간표**: 상세 시간표 API는 현재 구현 중인 상태입니다.
+5. **detail API 파라미터**: detail API의 `schedule` 파라미터는 연속 번호가 아닌 `origin_idx` 값을 사용해야 합니다.
+
+6. **필터링 로직**: 불완전한 시간표는 자동으로 제외되므로, 원본 데이터와 응답 데이터의 개수가 다를 수 있습니다.
 
 ---
 
@@ -435,8 +546,13 @@ curl "http://localhost:3000/shuttle/cache/status"
 
 ### **효율적인 데이터 구조**
 - 노선별, 요일별로 분리된 캐시 키 사용
-- 필요한 데이터만 추출하여 응답 크기 최소화
+- 필터링을 통한 불필요한 데이터 제거
+- 연속 번호로 일관된 인터페이스 제공
+
+### **병렬 처리**
+- `Promise.all()`을 사용한 비동기 처리 (필요시)
+- 캐시 기반 즉시 응답
 
 ---
 
-*Last Updated: 2025-05-29*
+*Last Updated: 2025-06-03*

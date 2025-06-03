@@ -147,14 +147,40 @@ router.get("/schedule", (req, res) => {
     // 캐시에서 시간표 데이터 조회
     const scheduleData = getScheduleData(route, date);
 
-    // pos1과 pos7만 추출 (출발지와 도착지)
     const filteredSchedule = {};
+    let newBusNumber = 1; // 새로운 연속 번호
+
     Object.keys(scheduleData).forEach((busNumber) => {
       const busData = scheduleData[busNumber];
-      filteredSchedule[busNumber] = {
-        pos1: busData.pos1 || "",
-        pos7: busData.pos7 || "",
-      };
+
+      // pos1부터 pos7까지 모든 값이 존재하는지 확인
+      const positions = [
+        busData.pos1,
+        busData.pos2,
+        busData.pos3,
+        busData.pos4,
+        busData.pos5,
+        busData.pos6,
+        busData.pos7,
+      ];
+
+      // 모든 position이 존재하고 비어있지 않은 경우에만 포함
+      const allPositionsValid = positions.every((pos) => pos && pos.trim() !== "");
+
+      if (allPositionsValid) {
+        // 새로운 연속 번호로 저장
+        filteredSchedule[newBusNumber] = {
+          origin_idx: busNumber, // 원래 버스 번호 저장
+          pos1: busData.pos1,
+          pos2: busData.pos2,
+          pos3: busData.pos3,
+          pos4: busData.pos4,
+          pos5: busData.pos5,
+          pos6: busData.pos6,
+          pos7: busData.pos7,
+        };
+        newBusNumber++; // 다음 번호로 증가
+      }
     });
 
     // 요일 타입 정보 추가
@@ -202,8 +228,8 @@ router.get("/schedule/detail", (req, res) => {
       });
     }
 
-    // 정거장 번호 체크
-    if (station !== "1" && station !== "2") {
+    // 노선 번호 체크
+    if (route !== "1" && route !== "2") {
       return res.status(400).json({
         success: false,
         message: "현재 노선 1번, 2번만 지원됩니다.",
@@ -221,6 +247,9 @@ router.get("/schedule/detail", (req, res) => {
       });
     }
 
+    // 해당 스케줄의 상세 데이터 (pos1~pos7)
+    const detailSchedule = scheduleData[schedule];
+
     // 요일 타입 정보 추가
     const dayType = getDayType(date);
 
@@ -230,7 +259,7 @@ router.get("/schedule/detail", (req, res) => {
       data: {
         date: date,
         dayType: dayType,
-        station: station,
+        route: route,
         scheduleNumber: schedule,
         detail: detailSchedule,
       },
