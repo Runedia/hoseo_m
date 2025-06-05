@@ -48,6 +48,67 @@ router.get("/list", async (req, res) => {
   }
 });
 
+// 메뉴 목록 (페이징) - 전체 갯수 포함
+router.get("/list2", async (req, res) => {
+  const { page = 1, pageSize = 20, action } = req.query;
+
+  // action 파라미터 필수 검증
+  if (!action) {
+    return res.status(400).json({
+      error: "action 파라미터는 필수입니다.",
+      details: {
+        required: true,
+        parameter: "action",
+        example: "MAPP_2312012408 (천안), MAPP_2312012409 (아산), HAPPY_DORM_NUTRITION (행복기숙사)",
+      },
+    });
+  }
+
+  const offset = (page - 1) * pageSize;
+
+  // 전체 갯수 조회 쿼리
+  const countSql = `SELECT COUNT(*) as totalCount FROM TBL_Menu WHERE type = ?`;
+
+  // 데이터 조회 쿼리
+  const dataSql = `
+    SELECT idx, type, chidx, title, author, create_dt
+    FROM TBL_Menu
+    WHERE type = ?
+    ORDER BY chidx DESC
+    LIMIT ? OFFSET ?
+  `;
+
+  try {
+    // 전체 갯수와 데이터를 병렬로 조회
+    const [countResult, dataResult] = await Promise.all([
+      pool.execute(countSql, [action]),
+      pool.execute(dataSql, [action, String(pageSize), String(offset)]),
+    ]);
+
+    const totalCount = countResult[0][0].totalCount;
+    const data = dataResult[0];
+
+    res.json({
+      data: data,
+      totalCount: totalCount,
+      currentPage: parseInt(page),
+      pageSize: parseInt(pageSize),
+      totalPages: Math.ceil(totalCount / pageSize),
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: err.message,
+      details: {
+        countSql: countSql,
+        dataSql: dataSql,
+        parameters: [action, String(pageSize), String(offset)],
+        errno: err.errno,
+        sqlState: err.sqlState,
+      },
+    });
+  }
+});
+
 // 메뉴 상세 (본문/파일) - 타입별 자동 다운로드 기능
 router.get("/idx/:chidx/:action", async (req, res) => {
   const { chidx, action } = req.params;

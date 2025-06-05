@@ -7,25 +7,38 @@ const fs = require("fs");
 const path = require("path");
 const { parseAndSaveNotice } = require("@root/process/1_notice/get_notice_detail"); // 크롤러 함수 import
 
-// 공지 목록 (페이징)
+// 공지 목록 (페이징) - type 파라미터 추가
 router.get("/list", async (req, res) => {
-  const { page = 1, pageSize = 20 } = req.query;
+  const { page = 1, pageSize = 20, type } = req.query; // type 파라미터 추가
   const offset = (page - 1) * pageSize;
-  const sql = `
-    SELECT idx, type,  chidx, title, author, create_dt
+
+  // type이 있으면 WHERE 조건 추가, 없으면 전체 조회
+  let sql = `
+    SELECT idx, type, chidx, title, author, create_dt
     FROM tbl_notice
+  `;
+  let params = [];
+
+  if (type) {
+    sql += ` WHERE type = ?`;
+    params.push(type);
+  }
+
+  sql += `
     ORDER BY chidx DESC
     LIMIT ? OFFSET ?
   `;
+  params.push(String(pageSize), String(offset));
+
   try {
-    const [rows] = await pool.execute(sql, [String(pageSize), String(offset)]);
+    const [rows] = await pool.execute(sql, params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({
       error: err.message,
       details: {
         sql: sql,
-        parameters: [String(pageSize), String(offset)],
+        parameters: params,
         errno: err.errno,
         sqlState: err.sqlState,
       },
