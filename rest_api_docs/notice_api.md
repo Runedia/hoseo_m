@@ -14,6 +14,7 @@
 - 이미지 및 첨부파일 자동 처리
 - 카테고리별 분류 및 검색 기능 제공
 - 페이징 기능 지원
+- 구조화된 로깅 및 성능 모니터링
 
 ## 주요 카테고리
 
@@ -38,6 +39,7 @@
 |-----------|------|----------|---------|-------------|
 | `page` | number | ❌ | 1 | 페이지 번호 |
 | `pageSize` | number | ❌ | 20 | 페이지당 항목 수 |
+| `type` | string | ❌ | - | 카테고리 코드 (선택적 필터링) |
 
 #### Example Request
 ```bash
@@ -71,8 +73,6 @@ GET /notice/list?page=1&pageSize=10
 {
   "error": "Database connection error",
   "details": {
-    "sql": "SELECT idx, type, chidx, title, author, create_dt FROM tbl_notice ORDER BY chidx DESC LIMIT ? OFFSET ?",
-    "parameters": ["10", "0"],
     "errno": 1234,
     "sqlState": "42000"
   }
@@ -98,7 +98,7 @@ GET /notice/list?page=1&pageSize=10
 GET /notice/idx/89756
 ```
 
-#### Success Response (200)
+#### Success Response (200) - 기존 데이터
 ```json
 {
   "idx": 12345,
@@ -129,13 +129,37 @@ GET /notice/idx/89756
 }
 ```
 
+#### Success Response (200) - 새로 다운로드된 데이터
+```json
+{
+  "idx": 12346,
+  "type": "CTG_17082400011",
+  "chidx": 89757,
+  "title": "신규 장학금 신청 안내",
+  "author": "학생처",
+  "create_dt": "2025-01-16T00:00:00.000Z",
+  "download_completed": 1,
+  "download_date": "2025-06-06T15:30:00.000Z",
+  "download_error": null,
+  "content": {
+    "content": "parsed HTML content",
+    "assets": [],
+    "attachments": []
+  },
+  "assets": [],
+  "attachments": [],
+  "isDownloaded": true
+}
+```
+
 #### 자동 다운로드 프로세스
 
-1. **파일 존재 확인**: JSON 파일이 있는지 확인
-2. **자동 크롤링**: 파일이 없으면 해당 공지사항 페이지 크롤링
-3. **이미지 처리**: 공지사항 내 이미지 다운로드 및 경로 수정
-4. **첨부파일 처리**: PDF 등 첨부파일 다운로드
-5. **DB 업데이트**: 다운로드 상태 및 파일 정보 저장
+1. **공지사항 정보 조회**: DB에서 기본 공지사항 정보 확인
+2. **디렉토리 자동 생성**: `download_notice/{chidx}` 디렉토리 생성
+3. **JSON 파일 확인**: 해당 chidx의 JSON 파일 존재 여부 확인
+4. **자동 크롤링**: 파일이 없거나 읽기 실패 시 `parseAndSaveNotice()` 함수 실행
+5. **이미지/파일 처리**: 공지사항 이미지 및 첨부파일 다운로드
+6. **DB 업데이트**: 다운로드 상태 및 파일 정보 갱신
 
 #### Error Response (404)
 ```json
@@ -144,44 +168,16 @@ GET /notice/idx/89756
 }
 ```
 
----
-
-### 3. 카테고리별 공지사항 조회
-
-특정 카테고리의 공지사항 목록을 조회합니다.
-
-**Endpoint:** `GET /notice/type/:type`
-
-#### Request Parameters (Path & Query String)
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `type` | string | ✅ | - | 카테고리 코드 |
-| `page` | number | ❌ | 1 | 페이지 번호 |
-| `pageSize` | number | ❌ | 20 | 페이지당 항목 수 |
-
-#### Example Request
-```bash
-GET /notice/type/CTG_17082400011?page=1&pageSize=5
-```
-
-#### Success Response (200)
+#### Error Response (500)
 ```json
-[
-  {
-    "idx": 12345,
-    "type": "CTG_17082400011",
-    "chidx": 89756,
-    "title": "2025학년도 1학기 수강신청 안내",
-    "author": "학사팀",
-    "create_dt": "2025-01-15T00:00:00.000Z"
-  }
-]
+{
+  "error": "Internal server error message"
+}
 ```
 
 ---
 
-### 4. 카테고리 목록 조회
+### 3. 카테고리 목록 조회
 
 사용 가능한 모든 공지사항 카테고리 목록을 조회합니다.
 
@@ -214,9 +210,16 @@ GET /notice/types
 ]
 ```
 
+#### Error Response (500)
+```json
+{
+  "error": "Internal server error message"
+}
+```
+
 ---
 
-### 5. 공지사항 검색
+### 4. 공지사항 검색
 
 제목, 작성자, 카테고리별로 공지사항을 검색합니다.
 
@@ -251,6 +254,13 @@ GET /notice/search?title=수강신청&author=학사팀&type=CTG_17082400011&page
 ]
 ```
 
+#### Error Response (500)
+```json
+{
+  "error": "Internal server error message"
+}
+```
+
 ---
 
 ## 데이터 구조
@@ -273,7 +283,7 @@ GET /notice/search?title=수강신청&author=학사팀&type=CTG_17082400011&page
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `content` | string | HTML 파일 경로 |
+| `content` | string/object | HTML 파일 경로 또는 파싱된 내용 |
 | `assets` | array | 이미지 파일 목록 |
 | `attachments` | array | 첨부파일 목록 |
 | `isDownloaded` | boolean | 다운로드 완료 여부 |
@@ -313,6 +323,35 @@ GET /notice/search?title=수강신청&author=학사팀&type=CTG_17082400011&page
 
 ---
 
+## 서비스 아키텍처
+
+### 사용된 서비스 모듈
+
+- **NoticeHelper**: 데이터베이스 관련 작업 처리
+- **SearchService**: 검색 조건 생성 및 관리
+- **fileManager**: 파일 시스템 관리
+- **Logger**: 구조화된 로깅
+
+### 로깅 시스템
+
+API는 구조화된 로깅을 지원합니다:
+
+```javascript
+// API 요청 로깅
+logger.api("GET", "/notice/list", 200, "150ms");
+
+// 파일 작업 로깅  
+logger.file("load", "89756_detail.json", "info");
+logger.file("not_found", "89756_detail.json", "warn");
+
+// 다운로드 상태 로깅
+logger.loading("[89756] 세부 내용 다운로드 시작");
+logger.success("[89756] 세부 내용 다운로드 완료");
+logger.error("[89756] 다운로드 실패", error);
+```
+
+---
+
 ## 파일 다운로드 경로
 
 ### 공지사항 파일 구조
@@ -333,12 +372,20 @@ download_notice/89756/
 └── 수강신청가이드.pdf         # 첨부파일
 ```
 
+### 디렉토리 자동 생성
+
+API는 필요한 디렉토리를 자동으로 생성합니다:
+1. `download_notice` 루트 디렉토리 생성
+2. `download_notice/{chidx}` 하위 디렉토리 생성
+3. 권한 및 접근성 확보
+
 ---
 
 ## 에러 코드
 
 | HTTP Status | Error Type | Description |
 |-------------|------------|-------------|
+| 200 | OK | 요청 성공 |
 | 404 | Not Found | 공지사항을 찾을 수 없음 |
 | 500 | Internal Server Error | 서버 내부 오류, DB 연결 실패, 다운로드 실패 등 |
 
@@ -351,14 +398,14 @@ download_notice/89756/
 curl "http://localhost:3000/notice/list?page=1&pageSize=10"
 ```
 
-### 2. 특정 공지사항 상세 내용 조회 (자동 다운로드)
+### 2. 특정 카테고리의 공지사항 조회
 ```bash
-curl "http://localhost:3000/notice/idx/89756"
+curl "http://localhost:3000/notice/list?type=CTG_17082400011&page=1&pageSize=5"
 ```
 
-### 3. 일반공지 카테고리의 공지사항 조회
+### 3. 특정 공지사항 상세 내용 조회 (자동 다운로드)
 ```bash
-curl "http://localhost:3000/notice/type/CTG_17082400011?page=1&pageSize=5"
+curl "http://localhost:3000/notice/idx/89756"
 ```
 
 ### 4. 카테고리 목록 확인
@@ -381,6 +428,11 @@ curl "http://localhost:3000/notice/search?author=학사팀&type=CTG_17082400011"
 curl "http://localhost:3000/notice/search?title=안내&author=학사팀&type=CTG_17082400011&page=1&pageSize=5"
 ```
 
+### 8. 기본 카테고리로 검색 (type 생략)
+```bash
+curl "http://localhost:3000/notice/search?title=장학금"
+```
+
 ---
 
 ## 주요 기능
@@ -394,16 +446,28 @@ curl "http://localhost:3000/notice/search?title=안내&author=학사팀&type=CTG
 - HTML 본문, 이미지, 첨부파일을 체계적으로 분류 저장
 - JSON 메타데이터로 파일 정보 관리
 - 로컬 파일시스템 기반 캐싱
+- 디렉토리 자동 생성 및 관리
 
 ### 🔍 **검색 기능**
 - 제목, 작성자, 카테고리별 검색 지원
 - 부분 일치 검색 (LIKE 연산)
 - 복합 검색 조건 지원
+- SearchService를 통한 검색 조건 최적화
 
 ### 📄 **페이징**
 - 모든 목록 API에서 페이징 지원
 - 사용자 정의 페이지 크기 설정 가능
 - 최신순 정렬
+
+### 📊 **구조화된 로깅**
+- 모든 API 요청에 대한 상세한 로그 기록
+- 처리 시간 및 상태 모니터링
+- 파일 작업 및 다운로드 상태 추적
+
+### 🏗️ **서비스 기반 아키텍처**
+- NoticeHelper를 통한 데이터베이스 작업 추상화
+- fileManager를 통한 파일 시스템 관리
+- 모듈화된 구조로 유지보수성 향상
 
 ---
 
@@ -419,6 +483,12 @@ curl "http://localhost:3000/notice/search?title=안내&author=학사팀&type=CTG
 
 5. **에러 핸들링**: 크롤링 실패 시에도 기본 공지사항 정보는 반환되며, `isDownloaded: false`로 표시됩니다.
 
+6. **디렉토리 권한**: 서버는 `download_notice` 디렉토리에 대한 읽기/쓰기 권한이 필요합니다.
+
+7. **데이터베이스 의존성**: 모든 API는 데이터베이스 연결이 필요하며, 연결 실패 시 적절한 에러 메시지를 반환합니다.
+
+8. **기존 API 호환성**: 기존 API 구조를 유지하여 클라이언트 호환성을 보장합니다.
+
 ---
 
-*Last Updated: 2025-05-29*
+*Last Updated: 2025-06-06*

@@ -1,56 +1,21 @@
 require("module-alias/register");
 
-const axios = require("axios");
-const cheerio = require("cheerio");
-const fs = require("fs-extra");
 const path = require("path");
 const pool = require("@root/utils/db");
 const { logger } = require("@root/utils/logger");
+const { crawlWebPage, downloadFile } = require("@root/utils/process/crawler");
+const { saveHtmlFile, saveJsonFile, safeFilename, ensureDirectoryExists } = require("@root/utils/process/file");
 
 const BASE_URL = "https://happydorm.hoseo.ac.kr";
 const DOWNLOAD_ROOT = path.resolve(process.cwd(), "download_happy_dorm");
-const headers = {
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+
+// 행복기숙사 전용 헤더
+const HAPPY_DORM_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   Accept: "*/*",
   Referer: BASE_URL + "/",
 };
-
-// 파일명 안전 변환 함수
-function safeFilename(name, fallbackExt = ".bin") {
-  if (!name || name.trim() === "") {
-    return `file_${Date.now()}${fallbackExt}`;
-  }
-
-  let ext = path.extname(name);
-  if (!ext) ext = fallbackExt;
-
-  let base = name.replace(/[\\/:*?"<>|]+/g, "_").trim();
-  if (!base.endsWith(ext)) base += ext;
-
-  return base;
-}
-
-// 파일 다운로드 함수
-async function downloadFile(fileUrl, destPath) {
-  if (fileUrl.startsWith("/")) {
-    fileUrl = BASE_URL + fileUrl;
-  }
-
-  const writer = fs.createWriteStream(destPath);
-  const response = await axios({
-    url: fileUrl,
-    method: "GET",
-    responseType: "stream",
-    headers,
-  });
-
-  response.data.pipe(writer);
-
-  return new Promise((resolve, reject) => {
-    writer.on("finish", resolve);
-    writer.on("error", reject);
-  });
-}
 
 // 파일 다운로드 + DB 저장
 async function downloadFileAndSaveDB(menuNum, fileType, fileUrl, originName, downloadDir) {
@@ -59,8 +24,11 @@ async function downloadFileAndSaveDB(menuNum, fileType, fileUrl, originName, dow
   const relativeFilePath = path.relative(process.cwd(), localFilePath);
   const urlPath = relativeFilePath.replace(/\\/g, "/");
 
-  // 파일 다운로드
-  await downloadFile(fileUrl, localFilePath);
+  // 완전한 URL 생성
+  const fullFileUrl = fileUrl.startsWith("/") ? BASE_URL + fileUrl : fileUrl;
+
+  // 파일 다운로드 (행복기숙사 전용 헤더 사용)
+  await downloadFile(fullFileUrl, localFilePath, { headers: HAPPY_DORM_HEADERS });
 
   // DB 저장
   await pool.execute(
@@ -85,12 +53,30 @@ async function processAttachments(idx, downloadDir) {
 
   try {
     const fileApiUrl = `${BASE_URL}/fileload?idx=${idx}&table=board&rev=4`;
-    const response = await axios.get(fileApiUrl, { headers });
-    const fileData = response.data;
+
+    const response = await crawlWebPage(fileApiUrl, {
+      description: `첨부파일 API [${idx}]`,
+      headers: HAPPY_DORM_HEADERS,
+    });
+
+    // JSON 응답 파싱
+    let fileData;
+    try {
+      fileData = JSON.parse(response);
+    } catch (e) {
+      console.warn(`[${idx}] 첨부파일 API 응답을 JSON으로 파싱할 수 없음`);
+      return attachments;
+    }
 
     if (Array.isArray(fileData) && fileData.length > 0) {
       const downloadPromises = fileData.map(async (file) => {
-        const result = await downloadFileAndSaveDB(idx, "attachment", file.file_url, file.file_original_name, downloadDir);
+        const result = await downloadFileAndSaveDB(
+          idx,
+          "attachment",
+          file.file_url,
+          file.file_original_name,
+          downloadDir
+        );
         return {
           originUrl: file.file_url,
           originName: file.file_original_name,
@@ -101,7 +87,7 @@ async function processAttachments(idx, downloadDir) {
 
       const results = await Promise.allSettled(downloadPromises);
       results.forEach((result, i) => {
-        if (result.status === 'fulfilled') {
+        if (result.status === "fulfilled") {
           attachments.push(result.value);
         } else {
           console.error(`[${idx}] 첨부파일 다운로드 오류:`, result.reason.message);
@@ -144,10 +130,8 @@ async function processImages($, boardElement, idx, downloadDir) {
       filename = safeFilename(baseName || `image_${imageIndex}.jpg`, ".jpg");
     }
 
-    const fileUrl = src.startsWith("/") ? BASE_URL + src : src;
-
     imagePromises.push(
-      downloadFileAndSaveDB(idx, "image", fileUrl, filename, downloadDir)
+      downloadFileAndSaveDB(idx, "image", src, filename, downloadDir)
         .then((result) => {
           $img.attr("src", result.filename);
           assets.push({
@@ -183,15 +167,18 @@ async function updateMenuDownloadStatus(idx, isSuccess, errorMessage = null) {
 async function parseAndSaveHappyDormMenu(idx) {
   try {
     const url = `${BASE_URL}/board/nutrition/view?idx=${idx}`;
-    console.log(`[${idx}] 요청 URL: ${url}`);
 
-    const { data: html } = await axios.get(url, { headers });
-    console.log(`[${idx}] 응답 받음 - HTML 길이: ${html.length}바이트`);
+    // 공통 크롤링 함수 사용
+    const html = await crawlWebPage(url, {
+      description: `행복기숙사 메뉴 [${idx}]`,
+      headers: HAPPY_DORM_HEADERS,
+    });
 
+    const cheerio = require("cheerio");
     const $ = cheerio.load(html);
 
     // 본문 영역 찾기 (우선순위 순)
-    const selectors = ['.board_view', '.board-view', '.board-content', '.content'];
+    const selectors = [".board_view", ".board-view", ".board-content", ".content"];
     let boardContent = null;
     let usedSelector = null;
 
@@ -210,7 +197,7 @@ async function parseAndSaveHappyDormMenu(idx) {
       let bestDiv = null;
       let maxTextLength = 0;
 
-      $('div').each((i, el) => {
+      $("div").each((i, el) => {
         const $div = $(el);
         const text = $div.text().trim();
         if (text.length > maxTextLength && text.length > 100) {
@@ -221,7 +208,7 @@ async function parseAndSaveHappyDormMenu(idx) {
 
       if (bestDiv) {
         boardContent = bestDiv;
-        usedSelector = 'div (최대 텍스트)';
+        usedSelector = "div (최대 텍스트)";
         console.log(`[${idx}] 최대 텍스트 div 사용 (${maxTextLength}자)`);
       }
     }
@@ -236,7 +223,7 @@ async function parseAndSaveHappyDormMenu(idx) {
 
     // 저장 디렉토리 생성
     const menuDownloadDir = path.join(DOWNLOAD_ROOT, String(idx));
-    await fs.ensureDir(menuDownloadDir);
+    await ensureDirectoryExists(menuDownloadDir);
 
     // 첨부파일 및 이미지 처리
     console.log(`[${idx}] 첨부파일 처리 중...`);
@@ -247,7 +234,7 @@ async function parseAndSaveHappyDormMenu(idx) {
 
     // HTML 파일 저장
     const htmlFilePath = path.join(menuDownloadDir, `${idx}.html`);
-    await fs.writeFile(htmlFilePath, boardContent.html(), { encoding: "utf-8" });
+    await saveHtmlFile(boardContent.html(), `행복기숙사 메뉴 ${idx}`, htmlFilePath);
 
     // JSON 메타데이터 저장
     const jsonResult = {
@@ -259,7 +246,7 @@ async function parseAndSaveHappyDormMenu(idx) {
     };
 
     const jsonFilePath = path.join(menuDownloadDir, `${idx}_detail.json`);
-    await fs.writeFile(jsonFilePath, JSON.stringify(jsonResult, null, 2), "utf-8");
+    await saveJsonFile(jsonResult, jsonFilePath);
 
     // DB 상태 업데이트
     await updateMenuDownloadStatus(idx, true);

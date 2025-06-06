@@ -1,8 +1,7 @@
 require("module-alias/register");
 
-const axios = require("axios");
-const cheerio = require("cheerio");
 const pool = require("@root/utils/db");
+const { crawlWebPage } = require("@root/utils/process/crawler");
 
 // 탭 이름과 schCategorycode 매핑
 const TAB_CODES = {
@@ -16,8 +15,24 @@ const TAB_CODES = {
   취업공지: "CTG_20120400086",
 };
 
+// 공지사항 설정
+const NOTICE_CONFIG = {
+  baseUrl: "https://www.hoseo.ac.kr/Home/BBSList.mbz",
+  viewBaseUrl: "https://www.hoseo.ac.kr/Home/BBSView.mbz",
+  action: "MAPP_1708240139",
+  headers: {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+      "AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Chrome/124.0.0.0 Safari/537.36",
+    Accept: "application/json, text/javascript, */*; q=0.01",
+    Referer: "https://www.hoseo.ac.kr/",
+    "X-Requested-With": "XMLHttpRequest",
+  },
+};
+
 function changeLink(chidx) {
-  return `https://www.hoseo.ac.kr/Home/BBSView.mbz?action=MAPP_1708240139&schIdx=${chidx}`;
+  return `${NOTICE_CONFIG.viewBaseUrl}?action=${NOTICE_CONFIG.action}&schIdx=${chidx}`;
 }
 
 async function parsePage($, tabName) {
@@ -40,7 +55,6 @@ async function parsePage($, tabName) {
       }
 
       return {
-        // num: $(tds[0]).text().trim(),
         chidx: chidx,
         title: $(tds[1]).text().trim(),
         link: chidx ? changeLink(chidx) : null,
@@ -58,42 +72,24 @@ async function insertNotice(categoryCode, notice) {
     INSERT INTO TBL_Notice (idx, type, chidx, title, link, author, create_dt)
     VALUES (null, ?, ?, ?, ?, ?, ?)
   `;
-  const values = [
-    categoryCode,
-    // notice.num,
-    notice.chidx,
-    notice.title,
-    notice.link,
-    notice.author,
-    notice.date,
-  ];
+  const values = [categoryCode, notice.chidx, notice.title, notice.link, notice.author, notice.date];
   await pool.execute(sql, values);
 }
 
 async function fetchAllNotices(tabName, categoryCode) {
-  const url = "https://www.hoseo.ac.kr/Home/BBSList.mbz";
-  const headers = {
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-      "AppleWebKit/537.36 (KHTML, like Gecko) " +
-      "Chrome/124.0.0.0 Safari/537.36",
-    Accept: "application/json, text/javascript, */*; q=0.01",
-    Referer: "https://www.hoseo.ac.kr/",
-    "X-Requested-With": "XMLHttpRequest",
-  };
-
   let maxPage = 1;
 
   for (let page = 1; page <= maxPage; page++) {
-    const params = {
-      action: "MAPP_1708240139",
-      schCategorycode: categoryCode,
-      pageIndex: page,
-    };
+    const url = `${NOTICE_CONFIG.baseUrl}?action=${NOTICE_CONFIG.action}&schCategorycode=${categoryCode}&pageIndex=${page}`;
 
     try {
-      const response = await axios.get(url, { params, headers });
-      const html = response.data;
+      // 공통 크롤링 함수 사용
+      const html = await crawlWebPage(url, {
+        description: `${tabName} 공지사항 목록 (페이지 ${page})`,
+        headers: NOTICE_CONFIG.headers,
+      });
+
+      const cheerio = require("cheerio");
       const $ = cheerio.load(html);
 
       if (page === 1) {
@@ -131,7 +127,7 @@ async function fetchAllNotices(tabName, categoryCode) {
           if (err.code === "ER_DUP_ENTRY") {
             duplicateCount++;
           } else {
-            console.error(`❌ row insert 실패 (num: ${row.num}):`, err.message);
+            console.error(`❌ row insert 실패 (chidx: ${row.chidx}):`, err.message);
           }
         }
       }
@@ -146,10 +142,30 @@ async function fetchAllNotices(tabName, categoryCode) {
   }
 }
 
-(async () => {
+// 메인 실행 함수
+async function runNoticeListScraper() {
+  console.log("🔔 호서대학교 공지사항 목록 수집 시작");
+
   for (const [tabName, categoryCode] of Object.entries(TAB_CODES)) {
+    console.log(`🚀 ${tabName} 데이터 수집 시작`);
     await fetchAllNotices(tabName, categoryCode);
+    console.log(`✅ ${tabName} 데이터 수집 완료`);
   }
-  console.log("🎉 전체 완료");
-  pool.end();
-})();
+
+  console.log("🎉 전체 공지사항 목록 수집 완료");
+}
+
+// 직접 실행될 때만 메인 함수 호출
+if (require.main === module) {
+  (async () => {
+    try {
+      await runNoticeListScraper();
+    } catch (err) {
+      console.error("❌ 전체 처리 중 오류:", err.message);
+    } finally {
+      pool.end();
+    }
+  })();
+}
+
+module.exports = { runNoticeListScraper };

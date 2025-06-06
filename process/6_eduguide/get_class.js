@@ -1,13 +1,15 @@
-const path = require("path");
+require("module-alias/register");
+
 const {
-  executeCrawlingProcess,
   processMultipleTypes,
   validateConfig,
   getAvailableTypes: getAvailableTypesUtil,
   addConfig,
+  crawlHoseoEduGuide,
+  printCrawlingSummary,
   OUTPUT_DIR,
-} = require("./utils/crawler");
-const { parseToStructuredJSON, parseBasicData } = require("./utils/parser");
+} = require("@root/utils/process/process");
+const { parseToStructuredJSON } = require("@root/utils/process/parser");
 
 /**
  * 호서대학교 수업 통합 크롤러
@@ -42,7 +44,14 @@ const CLASS_CONFIGS = {
  * @returns {Promise<Object|Object[]>} 크롤링 결과
  */
 async function getClass(type = "regist") {
-  return await processMultipleTypes(type, CLASS_CONFIGS, processSingleClass);
+  const result = await processMultipleTypes(type, CLASS_CONFIGS, processSingleClass);
+
+  // 배열 결과인 경우 요약 출력
+  if (Array.isArray(result)) {
+    printCrawlingSummary(result, "수업 크롤링");
+  }
+
+  return result;
 }
 
 /**
@@ -54,23 +63,16 @@ async function processSingleClass(type) {
   // 설정 확인
   const config = validateConfig(type, CLASS_CONFIGS, "수업");
 
-  // 공통 크롤링 프로세스 실행
-  return await executeCrawlingProcess(config, type, parseClassToStructuredJSON);
-}
+  // 제외할 항목들 (필요시 설정)
+  const excludeItems = config.excludeItems || [];
 
-/**
- * 수업 전용 파싱 함수 (공통 파서 래핑)
- * @param {string} htmlContent - HTML 콘텐츠
- * @param {string} type - 수업 타입
- * @returns {Object} 파싱된 데이터
- */
-function parseClassToStructuredJSON(htmlContent, type) {
-  return parseToStructuredJSON(htmlContent, type, CLASS_CONFIGS);
+  // 공통 크롤링 프로세스 실행
+  return await crawlHoseoEduGuide(type, CLASS_CONFIGS, excludeItems);
 }
 
 /**
  * 사용 가능한 수업 타입 목록 반환
- * @returns {Object} 수업 설정 정보
+ * @returns {Array} 수업 설정 정보
  */
 function getAvailableTypes() {
   return getAvailableTypesUtil(CLASS_CONFIGS);
@@ -86,10 +88,14 @@ function addClassConfig(type, config) {
 }
 
 /**
- * 기존 파싱 함수 (호환성 유지)
+ * 수업 전용 파싱 함수 (호환성 유지)
+ * @param {string} htmlContent - HTML 콘텐츠
+ * @param {string} type - 수업 타입
+ * @returns {Object} 파싱된 데이터
  */
-function parseClassData(htmlContent) {
-  return parseBasicData(htmlContent);
+function parseClassToStructuredJSON(htmlContent, type) {
+  const excludeItems = CLASS_CONFIGS[type]?.excludeItems || [];
+  return parseToStructuredJSON(htmlContent, type, excludeItems);
 }
 
 // 직접 실행 시
@@ -102,6 +108,11 @@ if (require.main === module) {
     getAvailableTypes().forEach((item) => {
       console.log(`  - ${item.type}: ${item.description}`);
     });
+    console.log("\n🚀 사용법:");
+    console.log("  node get_class.js regist        # 수강신청만");
+    console.log("  node get_class.js season        # 계절학기만");
+    console.log("  node get_class.js attendance    # 출결사항점검만");
+    console.log("  node get_class.js all           # 모든 수업 정보");
     return;
   }
 
@@ -113,23 +124,15 @@ if (require.main === module) {
   getClass(targetTypes)
     .then((result) => {
       if (Array.isArray(result)) {
-        console.log("🎉 전체 크롤링 완료!");
-        result.forEach((item, index) => {
-          if (item.success) {
-            console.log(`${index + 1}. ${item.config.description}: ✅`);
-            console.log(`   섹션 수: ${item.stats.structuredSections}개`);
-          } else {
-            console.log(`${index + 1}. ${item.type}: ❌ ${item.error}`);
-          }
-        });
+        console.log("🎉 전체 수업 크롤링 완료!");
       } else {
-        console.log("🎉 크롤링 성공!");
+        console.log("🎉 수업 크롤링 성공!");
         console.log("결과:", result.stats);
         console.log(`📊 구조화된 데이터 샘플:`, Object.keys(result.structuredData).slice(0, 3));
       }
     })
     .catch((error) => {
-      console.error("💥 크롤링 실패:", error.message);
+      console.error("💥 수업 크롤링 실패:", error.message);
       process.exit(1);
     });
 }
@@ -138,7 +141,6 @@ module.exports = {
   getClass,
   getAvailableTypes,
   addClassConfig,
-  parseClassData,
   parseClassToStructuredJSON,
   CLASS_CONFIGS,
   OUTPUT_DIR,

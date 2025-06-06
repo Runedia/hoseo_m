@@ -1,3 +1,5 @@
+require("module-alias/register");
+
 const cheerio = require("cheerio");
 
 /**
@@ -19,6 +21,38 @@ function removeNumberPrefix(text) {
     .replace(/^\d+\s+/, "") // "1 " 형태 제거
     .replace(/^\d+/, "") // 맨 앞 숫자만 있는 경우
     .trim(); // 앞뒤 공백 제거
+}
+
+/**
+ * 텍스트 정리 함수
+ * @param {string} text - 정리할 텍스트
+ * @param {Object} options - 옵션
+ * @returns {string} 정리된 텍스트
+ */
+function cleanText(text, options = {}) {
+  if (!text) return text;
+
+  const { removeNumbers = false, removeExtraSpaces = true, removeNewlines = false, trim = true } = options;
+
+  let cleaned = text;
+
+  if (removeNumbers) {
+    cleaned = removeNumberPrefix(cleaned);
+  }
+
+  if (removeExtraSpaces) {
+    cleaned = cleaned.replace(/\s+/g, " "); // 연속된 공백을 하나로
+  }
+
+  if (removeNewlines) {
+    cleaned = cleaned.replace(/\n/g, " "); // 개행을 공백으로
+  }
+
+  if (trim) {
+    cleaned = cleaned.trim();
+  }
+
+  return cleaned;
 }
 
 /**
@@ -76,19 +110,65 @@ function parseNestedList($elem, $, excludeItems = []) {
 }
 
 /**
+ * 테이블을 파싱하는 함수
+ * @param {Object} $table - 테이블 jQuery 요소
+ * @param {Object} $ - cheerio 인스턴스
+ * @param {Array} excludeItems - 제외할 항목 리스트
+ * @returns {Object} 파싱된 테이블 데이터
+ */
+function parseTable($table, $, excludeItems = []) {
+  const tableData = {
+    headers: [],
+    rows: [],
+  };
+
+  function shouldExcludeText(text) {
+    return excludeItems.some((excludeItem) => text.toLowerCase().includes(excludeItem.toLowerCase()));
+  }
+
+  // 헤더 추출
+  $table
+    .find("thead tr, tr:first-child")
+    .first()
+    .find("th, td")
+    .each((i, cell) => {
+      const text = $(cell).text().trim();
+      if (text && !shouldExcludeText(text)) {
+        tableData.headers.push(text);
+      }
+    });
+
+  // 데이터 행 추출
+  $table.find("tbody tr, tr:not(:first-child)").each((i, row) => {
+    const rowData = [];
+    $(row)
+      .find("td, th")
+      .each((j, cell) => {
+        const text = $(cell).text().trim();
+        if (text && !shouldExcludeText(text)) {
+          rowData.push(text);
+        }
+      });
+
+    if (rowData.length > 0) {
+      tableData.rows.push(rowData);
+    }
+  });
+
+  return tableData;
+}
+
+/**
  * HTML을 구조화된 JSON으로 변환하는 공통 함수
  * @param {string} htmlContent - HTML 콘텐츠
  * @param {string} type - 타입 (제외 설정용)
- * @param {Object} configs - 설정 객체 (제외 설정용)
+ * @param {Array} excludeItems - 제외할 항목들
  * @returns {Object} 구조화된 JSON 데이터
  */
-function parseToStructuredJSON(htmlContent, type = null, configs = null) {
+function parseToStructuredJSON(htmlContent, type = null, excludeItems = []) {
   const $ = cheerio.load(`<div class="sub-step">${htmlContent}</div>`);
   const result = {};
   let currentIndex = 1;
-
-  // 제외할 항목들 가져오기
-  const excludeItems = type && configs && configs[type] && configs[type].excludeItems ? configs[type].excludeItems : [];
 
   if (excludeItems.length > 0) {
     console.log(`🚫 제외할 항목: ${excludeItems.join(", ")}`);
@@ -168,27 +248,21 @@ function parseToStructuredJSON(htmlContent, type = null, configs = null) {
           }
           // 테이블 처리
           else if (tagName === "table") {
-            currentElem.find("tr").each((trIndex, trElem) => {
-              const $tr = $(trElem);
-              const cells = [];
-              $tr.find("td, th").each((cellIndex, cellElem) => {
-                const cellText = $(cellElem).text().trim();
-                if (cellText) cells.push(cellText);
-              });
-              if (cells.length > 0) {
-                const rowText = cells.join(" | ");
-                if (excludeItems.length === 0 || !shouldExcludeText(rowText)) {
-                  section.children[childIndex] = rowText;
-                  childIndex++;
-                }
-              }
-            });
+            const tableData = parseTable(currentElem, $, excludeItems);
+            if (tableData.rows.length > 0) {
+              section.children[childIndex] = {
+                type: "table",
+                headers: tableData.headers,
+                rows: tableData.rows,
+              };
+              childIndex++;
+            }
           }
           // 일반 텍스트 (번호 제거 및 trim 처리)
           else {
-            const cleanText = removeNumberPrefix(text);
-            if (cleanText && (excludeItems.length === 0 || !shouldExcludeText(cleanText))) {
-              section.children[childIndex] = cleanText;
+            const cleanedText = cleanText(text, { removeNumbers: true });
+            if (cleanedText && (excludeItems.length === 0 || !shouldExcludeText(cleanedText))) {
+              section.children[childIndex] = cleanedText;
               childIndex++;
             }
           }
@@ -212,10 +286,10 @@ function parseToStructuredJSON(htmlContent, type = null, configs = null) {
           // 텍스트 노드
           const text = $(elem).text().trim();
           if (text && (excludeItems.length === 0 || !shouldExcludeText(text))) {
-            const cleanText = removeNumberPrefix(text);
-            if (cleanText && (excludeItems.length === 0 || !shouldExcludeText(cleanText))) {
+            const cleanedText = cleanText(text, { removeNumbers: true });
+            if (cleanedText && (excludeItems.length === 0 || !shouldExcludeText(cleanedText))) {
               result[currentIndex] = {
-                text: cleanText,
+                text: cleanedText,
                 children: {},
               };
               currentIndex++;
@@ -242,37 +316,25 @@ function parseToStructuredJSON(htmlContent, type = null, configs = null) {
                 currentIndex++;
               }
             } else if (tagName === "table") {
-              const section = {
-                text: "표",
-                children: {},
-              };
-              let childIndex = 1;
-
-              $elem.find("tr").each((trIndex, trElem) => {
-                const $tr = $(trElem);
-                const cells = [];
-                $tr.find("td, th").each((cellIndex, cellElem) => {
-                  const cellText = $(cellElem).text().trim();
-                  if (cellText) cells.push(cellText);
-                });
-                if (cells.length > 0) {
-                  const rowText = cells.join(" | ");
-                  if (excludeItems.length === 0 || !shouldExcludeText(rowText)) {
-                    section.children[childIndex] = rowText;
-                    childIndex++;
-                  }
-                }
-              });
-
-              if (Object.keys(section.children).length > 0) {
-                result[currentIndex] = section;
+              const tableData = parseTable($elem, $, excludeItems);
+              if (tableData.rows.length > 0) {
+                result[currentIndex] = {
+                  text: "표",
+                  children: {
+                    1: {
+                      type: "table",
+                      headers: tableData.headers,
+                      rows: tableData.rows,
+                    },
+                  },
+                };
                 currentIndex++;
               }
             } else {
-              const cleanText = removeNumberPrefix(text);
-              if (cleanText && (excludeItems.length === 0 || !shouldExcludeText(cleanText))) {
+              const cleanedText = cleanText(text, { removeNumbers: true });
+              if (cleanedText && (excludeItems.length === 0 || !shouldExcludeText(cleanedText))) {
                 result[currentIndex] = {
-                  text: cleanText,
+                  text: cleanedText,
                   children: {},
                 };
                 currentIndex++;
@@ -288,33 +350,95 @@ function parseToStructuredJSON(htmlContent, type = null, configs = null) {
 }
 
 /**
- * 기존 파싱 함수 (호환성 유지)
+ * 기본 HTML 요소 추출
  * @param {string} htmlContent - HTML 콘텐츠
- * @returns {Object} 파싱된 데이터
+ * @param {string} selector - CSS 셀렉터
+ * @returns {Array} 추출된 요소 배열
  */
-function parseBasicData(htmlContent) {
+function extractElements(htmlContent, selector) {
   const $ = cheerio.load(htmlContent);
+  const elements = [];
 
-  const sections = [];
-  $(".sub-step")
-    .find("h1, h2, h3, h4, h5, h6")
-    .each((i, elem) => {
-      sections.push({
-        level: elem.tagName.toLowerCase(),
-        text: $(elem).text().trim(),
-        html: $(elem).html(),
-      });
+  $(selector).each((i, elem) => {
+    const $elem = $(elem);
+    elements.push({
+      tag: elem.tagName.toLowerCase(),
+      text: $elem.text().trim(),
+      html: $elem.html(),
+      attributes: elem.attribs || {},
     });
+  });
 
-  return {
-    sections,
-    totalSections: sections.length,
-  };
+  return elements;
+}
+
+/**
+ * 링크 추출
+ * @param {string} htmlContent - HTML 콘텐츠
+ * @param {string} baseUrl - 기본 URL (상대 경로 처리용)
+ * @returns {Array} 링크 배열
+ */
+function extractLinks(htmlContent, baseUrl = "") {
+  const $ = cheerio.load(htmlContent);
+  const links = [];
+
+  $("a[href]").each((i, elem) => {
+    const $elem = $(elem);
+    let href = $elem.attr("href");
+
+    // 상대 경로 처리
+    if (baseUrl && href && !href.startsWith("http") && !href.startsWith("//")) {
+      href = new URL(href, baseUrl).href;
+    }
+
+    links.push({
+      text: $elem.text().trim(),
+      href: href,
+      title: $elem.attr("title") || null,
+    });
+  });
+
+  return links;
+}
+
+/**
+ * 이미지 정보 추출
+ * @param {string} htmlContent - HTML 콘텐츠
+ * @param {string} baseUrl - 기본 URL (상대 경로 처리용)
+ * @returns {Array} 이미지 배열
+ */
+function extractImages(htmlContent, baseUrl = "") {
+  const $ = cheerio.load(htmlContent);
+  const images = [];
+
+  $("img[src]").each((i, elem) => {
+    const $elem = $(elem);
+    let src = $elem.attr("src");
+
+    // 상대 경로 처리
+    if (baseUrl && src && !src.startsWith("http") && !src.startsWith("//")) {
+      src = new URL(src, baseUrl).href;
+    }
+
+    images.push({
+      src: src,
+      alt: $elem.attr("alt") || null,
+      title: $elem.attr("title") || null,
+      width: $elem.attr("width") || null,
+      height: $elem.attr("height") || null,
+    });
+  });
+
+  return images;
 }
 
 module.exports = {
   removeNumberPrefix,
+  cleanText,
   parseNestedList,
+  parseTable,
   parseToStructuredJSON,
-  parseBasicData,
+  extractElements,
+  extractLinks,
+  extractImages,
 };

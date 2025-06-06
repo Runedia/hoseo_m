@@ -1,8 +1,7 @@
 require("module-alias/register");
 
-const axios = require("axios");
-const cheerio = require("cheerio");
 const pool = require("@root/utils/db");
+const { crawlWebPage } = require("@root/utils/process/crawler");
 
 // 행복기숙사 설정
 const HAPPY_DORM_CONFIG = {
@@ -10,6 +9,12 @@ const HAPPY_DORM_CONFIG = {
   domain: "happydorm.hoseo.ac.kr",
   baseUrl: "https://happydorm.hoseo.ac.kr/board/nutrition/list",
   viewUrl: "https://happydorm.hoseo.ac.kr/board/nutrition/view",
+  headers: {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+      "AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Chrome/124.0.0.0 Safari/537.36",
+  },
 };
 
 function createViewLink(idx) {
@@ -83,13 +88,6 @@ async function insertMenuItem(menuItem) {
 }
 
 async function fetchHappyDormMenuItems() {
-  const headers = {
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-      "AppleWebKit/537.36 (KHTML, like Gecko) " +
-      "Chrome/124.0.0.0 Safari/537.36",
-  };
-
   let currentPage = 1;
   let hasMorePages = true;
 
@@ -101,8 +99,13 @@ async function fetchHappyDormMenuItems() {
     try {
       console.log(`📄 ${currentPage} 페이지 처리 중...`);
 
-      const response = await axios.get(url, { headers });
-      const html = response.data;
+      // 공통 크롤링 함수 사용
+      const html = await crawlWebPage(url, {
+        description: `${HAPPY_DORM_CONFIG.name} 목록 (페이지 ${currentPage})`,
+        headers: HAPPY_DORM_CONFIG.headers,
+      });
+
+      const cheerio = require("cheerio");
       const $ = cheerio.load(html);
 
       const menuItems = await parsePage($);

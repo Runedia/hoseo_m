@@ -13,6 +13,7 @@
 - 자동 크롤링 및 다운로드 기능 지원
 - 이미지 및 첨부파일 자동 처리
 - 페이징 및 검색 기능 제공
+- 구조화된 로깅 및 성능 모니터링
 
 ## 지원 캠퍼스/식당
 
@@ -26,9 +27,9 @@
 
 ## API Endpoints
 
-### 1. 메뉴 목록 조회 (페이징)
+### 1. 메뉴 목록 조회 (기본)
 
-특정 캠퍼스/식당의 메뉴 목록을 페이징으로 조회합니다.
+특정 캠퍼스/식당의 메뉴 목록을 조회합니다. (데이터만 반환)
 
 **Endpoint:** `GET /menu/list`
 
@@ -79,9 +80,61 @@ GET /menu/list?action=MAPP_2312012408&page=1&pageSize=10
 }
 ```
 
+#### Error Response (500)
+```json
+{
+  "error": "Database query failed",
+  "details": {
+    "errno": -4077,
+    "sqlState": "HY000"
+  }
+}
+```
+
 ---
 
-### 2. 메뉴 상세 조회 (자동 다운로드)
+### 2. 메뉴 목록 조회 (페이징 정보 포함)
+
+특정 캠퍼스/식당의 메뉴 목록을 조회합니다. (데이터 + 페이징 정보 반환)
+
+**Endpoint:** `GET /menu/list2`
+
+#### Request Parameters (Query String)
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `action` | string | ✅ | - | 캠퍼스/식당 코드 |
+| `page` | number | ❌ | 1 | 페이지 번호 |
+| `pageSize` | number | ❌ | 20 | 페이지당 항목 수 |
+
+#### Example Request
+```bash
+GET /menu/list2?action=MAPP_2312012408&page=1&pageSize=10
+```
+
+#### Success Response (200)
+```json
+{
+  "data": [
+    {
+      "idx": 12345,
+      "type": "MAPP_2312012408",
+      "chidx": 87864,
+      "title": "2025년 1월 첫째주 메뉴",
+      "author": "관리자",
+      "create_dt": "2025-01-01T00:00:00.000Z"
+    }
+  ],
+  "totalCount": 156,
+  "currentPage": 1,
+  "pageSize": 10,
+  "totalPages": 16
+}
+```
+
+---
+
+### 3. 메뉴 상세 조회 (자동 다운로드)
 
 특정 메뉴의 상세 내용을 조회합니다. 파일이 없으면 자동으로 크롤링하여 다운로드합니다.
 
@@ -99,7 +152,7 @@ GET /menu/list?action=MAPP_2312012408&page=1&pageSize=10
 GET /menu/idx/87864/MAPP_2312012408
 ```
 
-#### Success Response (200)
+#### Success Response (200) - 기존 데이터
 ```json
 {
   "idx": 12345,
@@ -131,13 +184,39 @@ GET /menu/idx/87864/MAPP_2312012408
 }
 ```
 
+#### Success Response (200) - 새로 다운로드된 데이터
+```json
+{
+  "idx": 12346,
+  "type": "HAPPY_DORM_NUTRITION",
+  "chidx": 87865,
+  "title": "2025년 1월 행복기숙사 영양정보",
+  "author": "행복기숙사",
+  "create_dt": "2025-01-01T00:00:00.000Z",
+  "download_completed": 1,
+  "download_date": "2025-06-06T15:30:00.000Z",
+  "download_error": null,
+  "content": {
+    "content": "parsed HTML content",
+    "assets": [],
+    "attachments": []
+  },
+  "assets": [],
+  "attachments": [],
+  "isDownloaded": true,
+  "downloadPath": "download_happy_dorm"
+}
+```
+
 #### 자동 다운로드 프로세스
 
-1. **파일 존재 확인**: JSON 파일이 있는지 확인
-2. **자동 크롤링**: 파일이 없으면 해당 메뉴 페이지 크롤링
-3. **이미지 처리**: 메뉴 이미지 다운로드 및 경로 수정
-4. **첨부파일 처리**: PDF 등 첨부파일 다운로드
-5. **DB 업데이트**: 다운로드 상태 및 파일 정보 저장
+1. **메뉴 정보 조회**: DB에서 기본 메뉴 정보 확인
+2. **JSON 파일 확인**: 해당 chidx의 JSON 파일 존재 여부 확인
+3. **자동 크롤링**: 파일이 없거나 읽기 실패 시 타입별 크롤링 실행
+   - **일반 캠퍼스**: `parseAndSaveCampusMenu()` 함수 사용
+   - **행복기숙사**: `parseAndSaveHappyDormMenu()` 함수 사용
+4. **이미지/파일 처리**: 메뉴 이미지 및 첨부파일 다운로드
+5. **DB 업데이트**: 다운로드 상태 및 파일 정보 갱신
 
 #### Error Response (404)
 ```json
@@ -150,9 +229,16 @@ GET /menu/idx/87864/MAPP_2312012408
 }
 ```
 
+#### Error Response (500)
+```json
+{
+  "error": "Internal server error message"
+}
+```
+
 ---
 
-### 3. 캠퍼스/식당 목록 조회
+### 4. 캠퍼스/식당 목록 조회
 
 지원하는 모든 캠퍼스/식당 목록을 조회합니다.
 
@@ -183,7 +269,7 @@ GET /menu/actions
 
 ---
 
-### 4. 메뉴 검색
+### 5. 메뉴 검색
 
 제목, 작성자, 캠퍼스별로 메뉴를 검색합니다.
 
@@ -241,7 +327,7 @@ GET /menu/search?title=1월&action=MAPP_2312012408&page=1&pageSize=10
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `content` | string | HTML 파일 경로 |
+| `content` | string/object | HTML 파일 경로 또는 파싱된 내용 |
 | `assets` | array | 이미지 파일 목록 |
 | `attachments` | array | 첨부파일 목록 |
 | `isDownloaded` | boolean | 다운로드 완료 여부 |
@@ -265,6 +351,35 @@ GET /menu/search?title=1월&action=MAPP_2312012408&page=1&pageSize=10
   "localPath": "download_menu/87864/주간메뉴표.pdf",
   "fileName": "주간메뉴표.pdf"
 }
+```
+
+---
+
+## 서비스 아키텍처
+
+### 사용된 서비스 모듈
+
+- **MenuHelper**: 데이터베이스 관련 작업 처리
+- **SearchService**: 검색 기능 제공
+- **fileManager**: 파일 시스템 관리
+- **Logger**: 구조화된 로깅
+
+### 로깅 시스템
+
+API는 구조화된 로깅을 지원합니다:
+
+```javascript
+// API 요청 로깅
+logger.api("GET", "/menu/list", 200, "150ms");
+
+// 파일 작업 로깅  
+logger.file("load", "87864_detail.json", "info");
+logger.file("not_found", "87864_detail.json", "warn");
+
+// 다운로드 상태 로깅
+logger.loading("[87864] 세부 내용 다운로드 시작");
+logger.success("[87864] 캠퍼스 메뉴 다운로드 완료");
+logger.error("[87864] 다운로드 실패", error);
 ```
 
 ---
@@ -295,33 +410,75 @@ download_happy_dorm/{chidx}/
 
 | HTTP Status | Error Type | Description |
 |-------------|------------|-------------|
+| 200 | OK | 요청 성공 |
 | 400 | Bad Request | 필수 파라미터 누락 |
 | 404 | Not Found | 메뉴를 찾을 수 없음 |
-| 500 | Internal Server Error | 서버 내부 오류, 다운로드 실패 등 |
+| 500 | Internal Server Error | 서버 내부 오류, 다운로드 실패, DB 오류 등 |
 
 ---
 
 ## 사용 예시
 
-### 1. 천안캠퍼스 최신 메뉴 10개 조회
+### 1. 천안캠퍼스 최신 메뉴 10개 조회 (기본)
 ```bash
 curl "http://localhost:3000/menu/list?action=MAPP_2312012408&page=1&pageSize=10"
 ```
 
-### 2. 특정 메뉴 상세 내용 조회 (자동 다운로드)
+### 2. 천안캠퍼스 최신 메뉴 10개 조회 (페이징 정보 포함)
+```bash
+curl "http://localhost:3000/menu/list2?action=MAPP_2312012408&page=1&pageSize=10"
+```
+
+### 3. 특정 메뉴 상세 내용 조회 (자동 다운로드)
 ```bash
 curl "http://localhost:3000/menu/idx/87864/MAPP_2312012408"
 ```
 
-### 3. "1월" 키워드로 천안캠퍼스 메뉴 검색
+### 4. 행복기숙사 메뉴 상세 조회
+```bash
+curl "http://localhost:3000/menu/idx/87865/HAPPY_DORM_NUTRITION"
+```
+
+### 5. "1월" 키워드로 천안캠퍼스 메뉴 검색
 ```bash
 curl "http://localhost:3000/menu/search?title=1월&action=MAPP_2312012408"
 ```
 
-### 4. 지원 캠퍼스 목록 확인
+### 6. 지원 캠퍼스 목록 확인
 ```bash
 curl "http://localhost:3000/menu/actions"
 ```
+
+### 7. 전체 캠퍼스에서 "영양" 키워드 검색
+```bash
+curl "http://localhost:3000/menu/search?title=영양"
+```
+
+---
+
+## 주요 기능
+
+### 🔄 **자동 다운로드**
+- 상세 조회 시 해당 메뉴가 처음 요청되면 자동으로 크롤링 실행
+- 캠퍼스별로 다른 크롤링 로직 적용
+
+### 📊 **구조화된 로깅**
+- 모든 API 요청에 대한 상세한 로그 기록
+- 처리 시간 및 상태 모니터링
+- 파일 작업 및 다운로드 상태 추적
+
+### 💾 **파일 캐싱**
+- 한 번 다운로드된 메뉴는 로컬에 캐시되어 빠른 응답 제공
+- JSON 형태로 메타데이터 저장
+
+### 🔍 **고급 검색**
+- 제목, 작성자, 캠퍼스별 검색 지원
+- 부분 일치 검색 및 페이징 지원
+
+### 🏗️ **서비스 기반 아키텍처**
+- MenuHelper를 통한 데이터베이스 작업 추상화
+- fileManager를 통한 파일 시스템 관리
+- 모듈화된 구조로 유지보수성 향상
 
 ---
 
@@ -335,6 +492,12 @@ curl "http://localhost:3000/menu/actions"
 
 4. **에러 핸들링**: 크롤링 실패 시에도 기본 메뉴 정보는 반환되며, `isDownloaded: false`로 표시됩니다.
 
+5. **행복기숙사 특별 처리**: 행복기숙사는 별도의 크롤링 로직과 저장 경로를 사용합니다.
+
+6. **데이터베이스 의존성**: 모든 API는 데이터베이스 연결이 필요하며, 연결 실패 시 적절한 에러 메시지를 반환합니다.
+
+7. **기존 API 호환성**: 기존 API 구조를 유지하여 클라이언트 호환성을 보장합니다.
+
 ---
 
-*Last Updated: 2025-05-29*
+*Last Updated: 2025-06-06*

@@ -4,17 +4,22 @@ const pool = require("@root/utils/db");
 const { runGeneralMenuScraper } = require("./get_menu_list");
 const { runHappyDormScraper } = require("./get_menu_list(happy_dorm)");
 
+/**
+ * 호서대학교 전체 메뉴 데이터 수집 통합 실행 함수
+ */
 async function runAllScrapers() {
   console.log("🎯 호서대학교 전체 메뉴 데이터 수집 시작");
   console.log("=".repeat(60));
 
   try {
     // 1. 호서대학교 일반 사이트들 (천안, 아산)
+    console.log("📚 일반 사이트 메뉴 수집 시작...");
     await runGeneralMenuScraper();
 
     console.log("=".repeat(60));
 
     // 2. 행복기숙사
+    console.log("🏠 행복기숙사 메뉴 수집 시작...");
     await runHappyDormScraper();
 
     console.log("=".repeat(60));

@@ -274,24 +274,4 @@ router.get("/schedule/detail", (req, res) => {
   }
 });
 
-// 캐시 상태 확인 API (디버깅용)
-router.get("/cache/status", (req, res) => {
-  const cacheStatus = {};
-
-  Object.keys(scheduleCache).forEach((key) => {
-    const data = scheduleCache[key];
-    cacheStatus[key] = {
-      loaded: !!data,
-      scheduleCount: Object.keys(data).length,
-      isDefault: data.hasOwnProperty("error"),
-    };
-  });
-
-  res.json({
-    success: true,
-    data: cacheStatus,
-    message: "캐시 상태 조회 성공",
-  });
-});
-
 module.exports = router;

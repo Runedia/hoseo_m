@@ -1,6 +1,8 @@
-const axios = require("axios");
+require("module-alias/register");
+
+const { crawlWebPage, downloadFile } = require("@root/utils/process/crawler");
+const { saveHtmlFile, saveJsonFile, saveErrorInfo, ensureDirectoryExists } = require("@root/utils/process/file");
 const cheerio = require("cheerio");
-const fs = require("fs-extra");
 const path = require("path");
 
 /**
@@ -49,20 +51,12 @@ async function downloadCss(href) {
     let savePath = path.join(CSS_SAVE_DIR, filename);
 
     // 디렉토리 생성
-    await fs.ensureDir(CSS_SAVE_DIR);
+    ensureDirectoryExists(CSS_SAVE_DIR);
 
     console.log(`📥 CSS 다운로드 중: ${url}`);
 
     // 파일 다운로드
-    const res = await axios.get(url, {
-      responseType: "arraybuffer",
-      timeout: 10000,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-    });
-
-    await fs.writeFile(savePath, res.data);
+    await downloadFile(url, savePath);
     console.log(`✅ CSS 저장 완료: ${filename}`);
 
     // HTML에서 쓸 상대경로 리턴
@@ -267,24 +261,14 @@ function parseCalendarToNestedStructure(htmlContent) {
 async function getCalendar() {
   try {
     console.log("🚀 호서대학교 학사일정 크롤링 시작...");
-    console.log(`📍 대상 URL: ${TARGET_URL}`);
 
-    // 1. HTML 가져오기
-    console.log("📄 HTML 데이터 가져오는 중...");
-    const { data: html } = await axios.get(TARGET_URL, {
+    // 1. HTML 가져오기 (공통 크롤러 사용)
+    const html = await crawlWebPage(TARGET_URL, {
+      description: "학사일정",
       timeout: 15000,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "ko-KR,ko;q=0.8,en-US;q=0.5,en;q=0.3",
-        "Accept-Encoding": "gzip, deflate",
-        Connection: "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-      },
     });
 
-    console.log(`✅ 페이지 로드 완료 (상태: 200)`);
+    console.log(`✅ 페이지 로드 완료`);
 
     // 2. cheerio로 파싱
     const $ = cheerio.load(html);
@@ -306,10 +290,7 @@ async function getCalendar() {
     console.log(`🎨 발견된 CSS 파일 ${cssLinks.length}개:`, cssLinks);
 
     // 4. assets 디렉토리 생성
-    if (!fs.existsSync(OUTPUT_DIR)) {
-      fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-      console.log("📁 assets 디렉토리 생성 완료");
-    }
+    ensureDirectoryExists(OUTPUT_DIR);
 
     // 5. CSS 파일들 다운로드
     let linkTags = [];
@@ -359,25 +340,14 @@ async function getCalendar() {
       throw new Error("❌ 학사일정 내용이 비어있습니다.");
     }
 
-    // 7. 결과 HTML 생성
-    const resultHtml = `
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>호서대학교 2025학년도 학사일정</title>
-  <!-- 다운로드된 CSS 파일들 -->
-${linkTags.join("\n")}
-  <style>
+    // 7. 결과 HTML 생성 및 저장
+    const htmlContent = `
+      <!-- 학사일정 본문 -->
+      ${calendarContent}
+    `;
+
+    const customStyles = `
       /* 추가 스타일링 */
-      body {
-          font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
-          line-height: 1.6;
-          margin: 0;
-          padding: 20px;
-          background-color: #f5f5f5;
-      }
       .header {
           text-align: center;
           margin-bottom: 30px;
@@ -389,37 +359,31 @@ ${linkTags.join("\n")}
           margin: 0;
           font-size: 2.2em;
       }
-      .header p {
-          color: #666;
-          margin: 10px 0 0 0;
-          font-size: 1.1em;
-      }
       .generated-info {
           text-align: right;
           color: #999;
           font-size: 0.9em;
           margin-bottom: 20px;
       }
-  </style>
-</head>
-<body>
-    <div class="container">
-      <!-- 학사일정 본문 -->
-      ${calendarContent}
-    </div>
-</body>
-</html>`;
+      ${linkTags
+        .map((tag) =>
+          tag
+            .replace('<link href="/assets/static/', '@import url("')
+            .replace('" rel="stylesheet" type="text/css" />', '");')
+        )
+        .join("\n")}
+    `;
 
-    // 8. HTML 파일 저장
-    await fs.writeFile(OUTPUT_HTML, resultHtml, "utf-8");
-    console.log(`💾 HTML 파일 저장 완료: ${OUTPUT_HTML}`);
+    // 8. HTML 파일 저장 (공통 유틸리티 사용)
+    saveHtmlFile(htmlContent, "2025학년도 학사일정", OUTPUT_HTML, {
+      customStyles: customStyles,
+    });
 
     // 9. 구조화된 JSON 데이터 생성 및 저장
     console.log("🔄 HTML을 구조화된 JSON으로 파싱 중...");
     const structuredData = parseCalendarToNestedStructure(calendarContent);
 
-    await fs.writeFile(OUTPUT_JSON, JSON.stringify(structuredData, null, 2), "utf-8");
-    console.log(`💾 학사일정.json 파일 저장 완료: ${OUTPUT_JSON}`);
+    saveJsonFile(structuredData, OUTPUT_JSON, { logName: "학사일정" });
 
     console.log("\n🎉 학사일정 크롤링 및 JSON 변환 완료!");
     console.log(`📁 HTML 저장 위치: ${OUTPUT_HTML}`);
@@ -457,18 +421,13 @@ ${linkTags.join("\n")}
   } catch (error) {
     console.error("❌ 학사일정 크롤링 실패:", error.message);
 
-    // 에러 정보 저장
-    const errorData = {
-      error: true,
-      message: error.message,
-      url: TARGET_URL,
-      timestamp: new Date().toISOString(),
-      stack: error.stack,
+    // 에러 정보 저장 (공통 유틸리티 사용)
+    const config = {
+      fileName: "학사일정",
+      name: "학사일정",
+      description: "학사일정",
     };
-
-    const errorFile = path.join(OUTPUT_DIR, "학사일정_error.json");
-    await fs.writeFile(errorFile, JSON.stringify(errorData, null, 2), "utf-8");
-    console.log(`💾 에러 정보 저장: ${errorFile}`);
+    saveErrorInfo(error, "calendar", config, TARGET_URL, OUTPUT_DIR);
 
     throw error;
   }
@@ -478,7 +437,7 @@ ${linkTags.join("\n")}
 if (require.main === module) {
   getCalendar()
     .then((result) => {
-      console.log("🎉 크롤링 성공!");
+      console.log("🎉 학사일정 크롤링 성공!");
       console.log("결과:", result.stats);
 
       // 샘플 데이터 출력
@@ -498,7 +457,7 @@ if (require.main === module) {
       }
     })
     .catch((error) => {
-      console.error("💥 크롤링 실패:", error.message);
+      console.error("💥 학사일정 크롤링 실패:", error.message);
       process.exit(1);
     });
 }

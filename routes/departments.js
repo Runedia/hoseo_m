@@ -2,212 +2,364 @@ require("module-alias/register");
 
 const express = require("express");
 const router = express.Router();
-const fs = require("fs");
-const path = require("path");
 
-// 학과 정보 크롤링 모듈 import
+// 유틸리티 모듈들
+const { createResponse, createSimpleId } = require("@root/utils/routes/responseHelper");
+const { createLogger } = require("@root/utils/logger");
+const { sendError, ErrorTypes } = require("@root/utils/routes/errorHandler");
+
+// 서비스 모듈들
+const DepartmentService = require("@root/services/departmentService");
+
+// 학과 정보 크롤링 모듈들
 const { extractDepartmentList } = require("@root/process/5_department/get_department_list");
 const DepartmentCrawler = require("@root/process/5_department/department_crawler");
 
+// DepartmentService 인스턴스 생성
+const departmentService = new DepartmentService();
+
+// 로거 인스턴스 생성
+const logger = createLogger("departments");
+
 // ====================
-// 학과 정보 API
+// 헬퍼 함수들
 // ====================
 
-// 학과 정보 JSON API
+/**
+ * 학과 기본 정보 자동 생성
+ * @returns {Promise<void>}
+ */
+async function ensureDepartmentBasicInfo() {
+  if (!departmentService.fileExists(departmentService.files.simple)) {
+    logger.info("학과 기본 정보 파일이 없어 자동 생성 시작", {
+      module: "departments",
+      action: "auto_generate",
+    });
+
+    try {
+      await extractDepartmentList();
+      logger.info("학과 기본 정보 자동 생성 완료", {
+        module: "departments",
+        action: "auto_generate",
+      });
+    } catch (error) {
+      logger.error("학과 기본 정보 자동 생성 실패", {
+        module: "departments",
+        action: "auto_generate",
+        error: error.message,
+      });
+      throw new Error(`학과 기본 정보 자동 생성 실패: ${error.message}`);
+    }
+  }
+}
+
+/**
+ * 학과 상세 정보 크롤링 및 캐싱
+ * @param {Object} department - 학과 기본 정보
+ * @returns {Promise<Object>} 크롤링된 학과 상세 정보
+ */
+async function crawlAndCacheDepartmentInfo(department) {
+  const crawler = new DepartmentCrawler();
+
+  logger.info("학과 상세 정보 크롤링 시작", {
+    module: "departments",
+    action: "crawl_detail",
+    department: department.name,
+  });
+
+  const detailedInfo = await crawler.crawlDepartmentDetail(department);
+
+  if (!detailedInfo) {
+    throw new Error(`학과 상세 정보 크롤링 실패: ${department.name}`);
+  }
+
+  // 캐시에 저장
+  departmentService.cacheDepartmentInfo(detailedInfo);
+
+  logger.info("학과 상세 정보 크롤링 및 캐싱 완료", {
+    module: "departments",
+    action: "crawl_detail",
+    department: department.name,
+  });
+
+  return detailedInfo;
+}
+
+// ====================
+// 라우트 핸들러들
+// ====================
+
+/**
+ * 학과 목록 조회 API
+ * GET /departments/list?format=detailed|simple
+ */
 router.get("/list", async (req, res) => {
+  const requestId = createSimpleId();
+  const startTime = Date.now();
+
   try {
     const { format = "detailed" } = req.query;
 
-    // 포맷 옵션 확인
-    const validFormats = ["detailed", "simple"];
-    if (!validFormats.includes(format)) {
-      return res.status(400).json({
-        error: `지원하지 않는 포맷: ${format}`,
-        availableFormats: validFormats,
-        description: {
-          detailed: "대학별 그룹화된 상세 정보",
-          simple: "단순 리스트 형태",
-        },
+    logger.info("학과 목록 조회 요청", {
+      module: "departments",
+      action: "list",
+      requestId,
+      format,
+    });
+
+    // 포맷 유효성 검사
+    if (!departmentService.isValidFormat(format)) {
+      logger.warn("잘못된 포맷 요청", {
+        module: "departments",
+        action: "list",
+        requestId,
+        format,
+        validFormats: departmentService.validFormats,
       });
+
+      return sendError(res, ErrorTypes.BAD_REQUEST, `지원하지 않는 포맷: ${format}`);
     }
 
-    const fileName = format === "simple" ? "departments_simple.json" : "departments.json";
-    const jsonPath = path.join(process.cwd(), "assets", "static", fileName);
-
-    // JSON 파일 존재 여부 확인
-    if (!fs.existsSync(jsonPath)) {
-      console.log("🔄 학과 정보 JSON 파일이 없어 자동 생성 시작...");
-
+    // JSON 파일 존재 여부 확인 및 자동 생성
+    const filePath = departmentService.getFilePathByFormat(format);
+    if (!departmentService.fileExists(filePath)) {
       try {
-        await extractDepartmentList();
-        console.log("✅ 학과 정보 자동 생성 완료");
+        await ensureDepartmentBasicInfo();
       } catch (generateError) {
-        console.error("❌ 학과 정보 JSON 자동 생성 실패:", generateError.message);
-        return res.status(500).json({
-          error: "학과 정보 JSON을 자동 생성하는 중 오류가 발생했습니다.",
-          details: generateError.message,
-          suggestion: "잠시 후 다시 시도하거나 관리자에게 문의하세요.",
+        logger.error("학과 정보 자동 생성 실패", {
+          module: "departments",
+          action: "list",
+          requestId,
+          error: generateError.message,
         });
+
+        return sendError(res, ErrorTypes.GENERATION_ERROR, "학과 정보 JSON");
       }
     }
 
-    // JSON 파일 읽기
-    const jsonContent = fs.readFileSync(jsonPath, "utf-8");
-    const departmentData = JSON.parse(jsonContent);
+    // 학과 목록 데이터 조회
+    const departmentData = await departmentService.getDepartmentList(format);
 
-    // 메타정보와 함께 응답
-    const response = {
-      title: "호서대학교 학부(과) 정보",
-      format: format,
-      generatedAt: new Date().toISOString(),
-      description: format === "simple" ? "단순 리스트 형태의 학과 정보" : "대학별 그룹화된 상세 학과 정보",
-      ...(format === "detailed" &&
-        departmentData.statistics && {
-          statistics: departmentData.statistics,
-        }),
-      data: format === "detailed" ? departmentData : departmentData,
-    };
+    // 응답 데이터 생성
+    const responseData = departmentService.createListResponse(departmentData, format);
 
-    res.json(response);
-  } catch (error) {
-    console.error("학과 정보 JSON API 오류:", error);
-    res.status(500).json({
-      error: "학과 정보 JSON을 불러오는 중 오류가 발생했습니다.",
-      details: error.message,
+    const processingTime = Date.now() - startTime;
+    logger.info("학과 목록 조회 완료", {
+      module: "departments",
+      action: "list",
+      requestId,
+      format,
+      processingTime: `${processingTime}ms`,
     });
+
+    res.json(createResponse(responseData, null, { requestId, processingTime }));
+  } catch (error) {
+    const processingTime = Date.now() - startTime;
+    logger.error("학과 목록 조회 실패", {
+      module: "departments",
+      action: "list",
+      requestId,
+      error: error.message,
+      processingTime: `${processingTime}ms`,
+    });
+
+    sendError(res, ErrorTypes.INTERNAL_ERROR, "학과 정보 JSON 불러오기");
   }
 });
 
-// 학과 상세 정보 API - 특정 학과 정보 조회
+/**
+ * 학과 상세 정보 조회 API
+ * GET /departments/info?dept=학과명
+ */
 router.get("/info", async (req, res) => {
+  const requestId = createSimpleId();
+  const startTime = Date.now();
+
   try {
     const { dept } = req.query;
 
+    logger.info("학과 상세 정보 조회 요청", {
+      module: "departments",
+      action: "info",
+      requestId,
+      department: dept,
+    });
+
+    // 학과명 파라미터 검증
     if (!dept) {
-      return res.status(400).json({
-        error: "학과명(dept)을 쿼리 파라미터로 전달해주세요.",
-        example: "/departments/info?dept=컴퓨터공학부",
+      logger.warn("학과명 파라미터 누락", {
+        module: "departments",
+        action: "info",
+        requestId,
       });
+
+      return sendError(res, ErrorTypes.MISSING_PARAMETER, "dept", "/departments/info?dept=컴퓨터공학부");
     }
 
-    // /list가 실행되지 않았다면 먼저 실행 (학과 기본 정보 확보)
-    const simpleJsonPath = path.join(process.cwd(), "assets", "static", "departments_simple.json");
-    if (!fs.existsSync(simpleJsonPath)) {
-      try {
-        await extractDepartmentList();
-      } catch (generateError) {
-        return res.status(500).json({
-          error: "학과 기본 정보를 생성하는 중 오류가 발생했습니다.",
-          details: generateError.message,
-          suggestion: "잠시 후 다시 시도하거나 관리자에게 문의하세요.",
-        });
-      }
+    // 학과 기본 정보 확보
+    try {
+      await ensureDepartmentBasicInfo();
+    } catch (generateError) {
+      logger.error("학과 기본 정보 생성 실패", {
+        module: "departments",
+        action: "info",
+        requestId,
+        error: generateError.message,
+      });
+
+      return sendError(res, ErrorTypes.GENERATION_ERROR, "학과 기본 정보");
     }
 
-    // 상세 학과 정보가 저장된 JSON 파일 경로
-    const detailedJsonPath = path.join(process.cwd(), "assets", "static", "departments_detailed.json");
+    // 캐시된 상세 정보 확인
+    const cachedDepartment = departmentService.getCachedDepartmentInfo(dept);
+    if (cachedDepartment) {
+      const processingTime = Date.now() - startTime;
+      logger.info("캐시된 학과 상세 정보 반환", {
+        module: "departments",
+        action: "info",
+        requestId,
+        department: dept,
+        cached: true,
+        processingTime: `${processingTime}ms`,
+      });
 
-    // 상세 정보 파일이 있으면 먼저 확인
-    if (fs.existsSync(detailedJsonPath)) {
-      const detailedData = JSON.parse(fs.readFileSync(detailedJsonPath, "utf-8"));
-      const cachedDepartment = detailedData.find((d) => d.name === dept);
-
-      if (cachedDepartment) {
-        return res.json({
-          message: "학과 정보를 성공적으로 가져왔습니다.",
-          data: cachedDepartment,
-          cached: true,
-        });
-      }
+      return res.json(
+        createResponse(
+          {
+            message: "학과 정보를 성공적으로 가져왔습니다.",
+            data: cachedDepartment,
+            cached: true,
+          },
+          null,
+          { requestId, processingTime }
+        )
+      );
     }
 
-    // 캐시된 데이터가 없으면 간략 정보에서 검색 후 크롤링
-    const simpleData = JSON.parse(fs.readFileSync(simpleJsonPath, "utf-8"));
-    const department = simpleData.find((d) => d.name === dept);
-
+    // 기본 학과 정보에서 검색
+    const department = departmentService.findDepartmentInSimpleList(dept);
     if (!department) {
-      return res.status(404).json({
-        error: `'${dept}' 학과를 찾을 수 없습니다.`,
-        suggestion: "정확한 학과명을 입력해주세요.",
+      logger.warn("학과 정보 없음", {
+        module: "departments",
+        action: "info",
+        requestId,
+        department: dept,
       });
+
+      return sendError(res, ErrorTypes.NOT_FOUND, `'${dept}' 학과`);
     }
 
-    // 발견한 학과를 크롤링
-    const crawler = new DepartmentCrawler();
-    const detailedInfo = await crawler.crawlDepartmentDetail(department);
+    // 학과 상세 정보 크롤링
+    try {
+      const detailedInfo = await crawlAndCacheDepartmentInfo(department);
 
-    if (!detailedInfo) {
-      return res.status(500).json({
-        error: `'${dept}' 학과 정보를 가져오는데 실패했습니다.`,
-        suggestion: "잠시 후 다시 시도해주세요.",
+      const processingTime = Date.now() - startTime;
+      logger.info("학과 상세 정보 조회 완료", {
+        module: "departments",
+        action: "info",
+        requestId,
+        department: dept,
+        cached: false,
+        processingTime: `${processingTime}ms`,
       });
+
+      res.json(
+        createResponse(
+          {
+            message: "학과 정보를 성공적으로 가져왔습니다.",
+            data: detailedInfo,
+            cached: false,
+          },
+          null,
+          { requestId, processingTime }
+        )
+      );
+    } catch (crawlError) {
+      logger.error("학과 상세 정보 크롤링 실패", {
+        module: "departments",
+        action: "info",
+        requestId,
+        department: dept,
+        error: crawlError.message,
+      });
+
+      return sendError(res, ErrorTypes.INTERNAL_ERROR, `'${dept}' 학과 정보 가져오기`);
     }
-
-    // 새로 크롤링한 정보를 기존 상세 정보 파일에 추가
-    let allDetailedData = [];
-    if (fs.existsSync(detailedJsonPath)) {
-      allDetailedData = JSON.parse(fs.readFileSync(detailedJsonPath, "utf-8"));
-    }
-
-    // 새 데이터 추가
-    allDetailedData.push(detailedInfo);
-
-    // 파일에 저장
-    fs.writeFileSync(detailedJsonPath, JSON.stringify(allDetailedData, null, 2), "utf-8");
-
-    return res.json({
-      message: "학과 정보를 성공적으로 가져왔습니다.",
-      data: detailedInfo,
-      cached: false,
-    });
   } catch (error) {
-    console.error("학과 상세 정보 API 오류:", error);
-    res.status(500).json({
-      error: "학과 정보를 가져오는 중 오류가 발생했습니다.",
-      details: error.message,
+    const processingTime = Date.now() - startTime;
+    logger.error("학과 상세 정보 조회 실패", {
+      module: "departments",
+      action: "info",
+      requestId,
+      error: error.message,
+      processingTime: `${processingTime}ms`,
     });
+
+    sendError(res, ErrorTypes.INTERNAL_ERROR, "학과 정보 가져오기");
   }
 });
 
-// 학과 이미지 다운로드 API
+/**
+ * 학과 이미지 다운로드 API
+ * GET /departments/images/:filename
+ */
 router.get("/images/:filename", (req, res) => {
+  const requestId = createSimpleId();
+  const startTime = Date.now();
+
   try {
     const { filename } = req.params;
 
-    // 파일 경로 설정
-    const imagePath = path.join(process.cwd(), "assets", "static", "images", filename);
+    logger.info("학과 이미지 요청", {
+      module: "departments",
+      action: "images",
+      requestId,
+      filename,
+    });
 
-    // 파일 존재 여부 확인
-    if (!fs.existsSync(imagePath)) {
-      return res.status(404).json({
-        error: `'${filename}' 이미지를 찾을 수 없습니다.`,
-        suggestion: "정확한 파일명을 확인해주세요.",
+    // 이미지 파일 존재 여부 확인
+    if (!departmentService.imageExists(filename)) {
+      logger.warn("이미지 파일 없음", {
+        module: "departments",
+        action: "images",
+        requestId,
+        filename,
       });
+
+      return sendError(res, ErrorTypes.NOT_FOUND, `'${filename}' 이미지`);
     }
 
-    // 파일 확장자 확인
-    const ext = path.extname(filename).toLowerCase();
-    const mimeTypes = {
-      ".jpg": "image/jpeg",
-      ".jpeg": "image/jpeg",
-      ".png": "image/png",
-      ".gif": "image/gif",
-      ".webp": "image/webp",
-    };
-
-    // Content-Type 설정
-    if (mimeTypes[ext]) {
-      res.setHeader("Content-Type", mimeTypes[ext]);
+    // MIME 타입 설정
+    const mimeType = departmentService.getMimeType(filename);
+    if (mimeType) {
+      res.setHeader("Content-Type", mimeType);
     }
+
+    const imagePath = departmentService.getImagePath(filename);
+
+    const processingTime = Date.now() - startTime;
+    logger.info("학과 이미지 전송 완료", {
+      module: "departments",
+      action: "images",
+      requestId,
+      filename,
+      mimeType,
+      processingTime: `${processingTime}ms`,
+    });
 
     // 파일 전송
     return res.sendFile(imagePath);
   } catch (error) {
-    console.error("학과 이미지 다운로드 API 오류:", error);
-    res.status(500).json({
-      error: "이미지를 가져오는 중 오류가 발생했습니다.",
-      details: error.message,
+    const processingTime = Date.now() - startTime;
+    logger.error("학과 이미지 전송 실패", {
+      module: "departments",
+      action: "images",
+      requestId,
+      error: error.message,
+      processingTime: `${processingTime}ms`,
     });
+
+    sendError(res, ErrorTypes.INTERNAL_ERROR, "이미지 가져오기");
   }
 });
 

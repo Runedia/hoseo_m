@@ -1,13 +1,12 @@
 require("module-alias/register");
 
-const axios = require("axios");
-const cheerio = require("cheerio");
-const fs = require("fs");
 const path = require("path");
 const { logger } = require("@root/utils/logger");
+const { crawlWebPage, downloadFile } = require("@root/utils/process/crawler");
+const { readFileSafe, saveJsonFile, ensureDirectoryExists, safeFilename } = require("@root/utils/process/file");
 
 /**
- * 학과 상세 페이지 크롤러
+ * 학과 상세 페이지 크롤러 (리팩토링 버전)
  */
 class DepartmentCrawler {
   constructor() {
@@ -21,13 +20,13 @@ class DepartmentCrawler {
   /**
    * departments_simple.json 파일 로드
    */
-  loadDepartments() {
+  async loadDepartments() {
     try {
-      if (!fs.existsSync(this.departmentsFile)) {
+      const data = await readFileSafe(this.departmentsFile);
+      if (!data) {
         throw new Error("departments_simple.json 파일이 존재하지 않습니다.");
       }
 
-      const data = fs.readFileSync(this.departmentsFile, "utf8");
       const departments = JSON.parse(data);
       logger.info(`학과 데이터 로드 완료: ${departments.length}개`);
       return departments;
@@ -51,35 +50,20 @@ class DepartmentCrawler {
 
       logger.info(`크롤링 시작: ${college} - ${name}`);
 
-      const response = await this.fetchDepartmentPage(detailLink);
-      if (!response) return null;
+      // 공통 크롤링 함수 사용
+      const htmlContent = await crawlWebPage(detailLink, {
+        description: `${college} ${name} 학과 상세`,
+        timeout: 10000,
+      });
 
-      const $ = cheerio.load(response.data);
+      const cheerio = require("cheerio");
+      const $ = cheerio.load(htmlContent);
       const departmentInfo = await this.extractDepartmentInfo($, department);
 
       logger.info(`${name} 크롤링 완료`);
       return departmentInfo;
     } catch (error) {
       logger.error(`${department.name} 크롤링 실패: ${error.message}`);
-      return null;
-    }
-  }
-
-  /**
-   * 학과 페이지 요청
-   */
-  async fetchDepartmentPage(url) {
-    try {
-      const response = await axios.get(url, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        },
-        timeout: 10000,
-      });
-      return response;
-    } catch (error) {
-      logger.error(`페이지 요청 실패: ${error.message}`);
       return null;
     }
   }
@@ -161,8 +145,8 @@ class DepartmentCrawler {
         if (src) {
           const imageUrl = src.startsWith("/") ? `http://www.hoseo.ac.kr${src}` : src;
 
-          // 이미지 다운로드 및 저장
-          const savedImagePath = await this.downloadImage(imageUrl, departmentName);
+          // 이미지 다운로드 및 저장 (공통 유틸리티 사용)
+          const savedImagePath = await this.downloadImageSafely(imageUrl, departmentName);
           return savedImagePath || imageUrl; // 다운로드 실패시 원본 URL 반환
         }
       }
@@ -171,15 +155,13 @@ class DepartmentCrawler {
   }
 
   /**
-   * 이미지 다운로드 및 저장
+   * 이미지 다운로드 (공통 유틸리티 사용)
    */
-  async downloadImage(imageUrl, departmentName) {
+  async downloadImageSafely(imageUrl, departmentName) {
     try {
       // static/images 디렉토리 생성
       const imagesDir = path.join(this.outputDir, "images");
-      if (!fs.existsSync(imagesDir)) {
-        fs.mkdirSync(imagesDir, { recursive: true });
-      }
+      await ensureDirectoryExists(imagesDir);
 
       // URL에서 savename 파라미터 추출
       const url = new URL(imageUrl);
@@ -190,49 +172,22 @@ class DepartmentCrawler {
         fileName = savename;
       } else {
         // savename이 없으면 학과명으로 대체
-        const safeFileName = departmentName.replace(/[^a-zA-Z0-9가-힣]/g, "_");
-        fileName = `${safeFileName}_image`;
-      }
-
-      // 이미지 다운로드
-      const response = await axios.get(imageUrl, {
-        responseType: "arraybuffer",
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        },
-        timeout: 15000,
-      });
-
-      // Content-Type에서 확장자 추출
-      const contentType = response.headers["content-type"];
-      let extension = "";
-
-      if (contentType) {
-        if (contentType.includes("jpeg") || contentType.includes("jpg")) {
-          extension = ".jpg";
-        } else if (contentType.includes("png")) {
-          extension = ".png";
-        } else if (contentType.includes("gif")) {
-          extension = ".gif";
-        } else if (contentType.includes("webp")) {
-          extension = ".webp";
-        } else {
-          extension = ".jpg"; // 기본값
-        }
-      } else {
-        extension = ".jpg"; // 기본값
+        const safeFileName = safeFilename(departmentName, ".jpg");
+        fileName = `${safeFileName}_image.jpg`;
       }
 
       // 파일명에 확장자가 없으면 추가
       if (!fileName.includes(".")) {
-        fileName += extension;
+        fileName += ".jpg";
       }
 
       const filePath = path.join(imagesDir, fileName);
 
-      // 이미지 파일 저장
-      await fs.promises.writeFile(filePath, response.data);
+      // 공통 다운로드 함수 사용
+      await downloadFile(imageUrl, filePath, {
+        timeout: 15000,
+        createDir: false, // 이미 디렉토리 생성함
+      });
 
       // 상대 경로 반환
       const relativePath = path.join("images", fileName).replace(/\\/g, "/");
@@ -559,7 +514,7 @@ class DepartmentCrawler {
   async crawlAllDepartments() {
     console.log("[시작] 학과 상세 정보 크롤링을 시작합니다.");
 
-    const departments = this.loadDepartments();
+    const departments = await this.loadDepartments();
     if (departments.length === 0) {
       console.log("[종료] 크롤링할 학과가 없습니다.");
       return;
@@ -589,7 +544,7 @@ class DepartmentCrawler {
       }
     }
 
-    this.saveResults(results);
+    await this.saveResults(results);
     console.log(`\n[완료] 총 ${results.length}개 학과 정보를 수집했습니다.`);
   }
 
@@ -597,7 +552,7 @@ class DepartmentCrawler {
    * 특정 학과만 크롤링 (테스트용)
    */
   async crawlSingleDepartment(departmentName) {
-    const departments = this.loadDepartments();
+    const departments = await this.loadDepartments();
     const target = departments.find((dept) => dept.name === departmentName);
 
     if (!target) {
@@ -612,18 +567,18 @@ class DepartmentCrawler {
       console.log("[결과]", JSON.stringify(result, null, 2));
 
       const deptFile = path.join(this.outputDir, `dept_${departmentName}.json`);
-      fs.writeFileSync(deptFile, JSON.stringify(result, null, 2), "utf8");
+      await saveJsonFile(deptFile, result);
       console.log(`[저장] 테스트 결과가 ${deptFile}에 저장되었습니다.`);
     }
   }
 
   /**
-   * 크롤링 결과 저장
+   * 크롤링 결과 저장 (공통 유틸리티 사용)
    */
-  saveResults(results) {
+  async saveResults(results) {
     try {
       const outputFile = path.join(this.outputDir, "departments_detailed.json");
-      fs.writeFileSync(outputFile, JSON.stringify(results, null, 2), "utf8");
+      await saveJsonFile(outputFile, results);
       console.log(`[저장] 크롤링 결과가 ${outputFile}에 저장되었습니다.`);
 
       const stats = {
@@ -637,7 +592,7 @@ class DepartmentCrawler {
       };
 
       const statsFile = path.join(this.outputDir, "departments_crawl_stats.json");
-      fs.writeFileSync(statsFile, JSON.stringify(stats, null, 2), "utf8");
+      await saveJsonFile(statsFile, stats);
       console.log(`[통계] 크롤링 통계가 ${statsFile}에 저장되었습니다.`);
     } catch (error) {
       console.error("[에러] 결과 저장 실패:", error.message);

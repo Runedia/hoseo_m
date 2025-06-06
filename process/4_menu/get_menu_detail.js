@@ -1,62 +1,27 @@
 require("module-alias/register");
 
-const axios = require("axios");
-const cheerio = require("cheerio");
-const fs = require("fs-extra");
 const path = require("path");
 const pool = require("@root/utils/db");
 const { logger } = require("@root/utils/logger");
+const { crawlHoseoNotice, downloadFile } = require("@root/utils/process/crawler");
+const { saveHtmlFile, saveJsonFile, safeFilename, ensureDirectoryExists } = require("@root/utils/process/file");
 
 const BASE_URL = "https://www.hoseo.ac.kr";
 const DOWNLOAD_ROOT = path.resolve(process.cwd(), "download_menu");
-const headers = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-    "AppleWebKit/537.36 (KHTML, like Gecko) " +
-    "Chrome/124.0.0.0 Safari/537.36",
-  Accept: "*/*",
-  Referer: BASE_URL + "/",
-};
-
-// 파일명 안전 변환 함수
-function safeFilename(name, fallbackExt = ".bin") {
-  if (!name || name.trim() === "") {
-    return `file_${Date.now()}${fallbackExt}`;
-  }
-
-  let ext = path.extname(name);
-  if (!ext) ext = fallbackExt;
-
-  let base = name.replace(/[\\/:*?"<>|]+/g, "_").trim();
-  if (!base.endsWith(ext)) base += ext;
-
-  return base;
-}
-
-// 파일 다운로드 함수
-async function downloadFile(fileUrl, destPath) {
-  if (fileUrl.startsWith("/")) {
-    fileUrl = BASE_URL + fileUrl;
-  }
-
-  const writer = fs.createWriteStream(destPath);
-  const response = await axios({
-    url: fileUrl,
-    method: "GET",
-    responseType: "stream",
-    headers,
-  });
-
-  response.data.pipe(writer);
-
-  return new Promise((resolve, reject) => {
-    writer.on("finish", resolve);
-    writer.on("error", reject);
-  });
-}
 
 // 파일 다운로드 + DB 저장
 async function downloadFileAndSaveDB(menuNum, fileType, fileUrl, originName, downloadDir) {
+  // 파라미터 검증
+  if (!fileUrl || typeof fileUrl !== "string") {
+    throw new Error(`잘못된 fileUrl: ${fileUrl}`);
+  }
+  if (!originName || typeof originName !== "string") {
+    throw new Error(`잘못된 originName: ${originName}`);
+  }
+  if (!downloadDir || typeof downloadDir !== "string") {
+    throw new Error(`잘못된 downloadDir: ${downloadDir}`);
+  }
+
   const filenameSafe = safeFilename(originName, fileType === "image" ? ".jpg" : ".pdf");
   const localFilePath = path.join(downloadDir, filenameSafe);
   const relativeFilePath = path.relative(process.cwd(), localFilePath);
@@ -64,8 +29,11 @@ async function downloadFileAndSaveDB(menuNum, fileType, fileUrl, originName, dow
   // URL용 경로 (슬래시로 변환)
   const urlPath = relativeFilePath.replace(/\\/g, "/");
 
+  // 완전한 URL 생성
+  const fullFileUrl = fileUrl.startsWith("/") ? BASE_URL + fileUrl : fileUrl;
+
   // 파일 다운로드
-  await downloadFile(fileUrl, localFilePath);
+  await downloadFile(fullFileUrl, localFilePath);
 
   // DB 저장(tbl_menufile)
   await pool.execute(
@@ -106,7 +74,7 @@ async function processAttachments($, chidx, downloadDir) {
       });
 
       downloadPromises.push(
-        downloadFileAndSaveDB(chidx, "attachment", fileUrl, originName, downloadDir)
+        downloadFileAndSaveDB(chidx, "attachment", href, originName, downloadDir)
           .then((result) => {
             // attachments 배열의 해당 항목 업데이트
             const attachmentIndex = attachments.findIndex((att) => att.originUrl === fileUrl);
@@ -136,25 +104,31 @@ async function processImages($, boardElement, chidx, downloadDir) {
     const $img = $(el);
     let src = $img.attr("src");
 
-    if (!src) return;
+    // src가 없거나 빈 문자열이면 스킵
+    if (!src || src.trim() === "") {
+      return;
+    }
 
     imageIndex++;
 
     // 파일명 결정
     let title = $img.attr("title");
     let filename;
-    if (title && title.trim() !== "") {
-      filename = safeFilename(title.trim(), ".jpg");
-    } else {
-      const baseName = path.basename(src.split("?")[0]);
-      filename = safeFilename(baseName || `image_${imageIndex}.jpg`, ".jpg");
+    try {
+      if (title && title.trim() !== "") {
+        filename = safeFilename(title.trim(), ".jpg");
+      } else {
+        const baseName = path.basename(src.split("?")[0]);
+        filename = safeFilename(baseName || `image_${imageIndex}.jpg`, ".jpg");
+      }
+    } catch (e) {
+      console.error(`[${chidx}] 파일명 생성 오류 (src: ${src}):`, e.message);
+      filename = `image_${imageIndex}.jpg`;
     }
-
-    const fileUrl = src.startsWith("/") ? BASE_URL + src : src;
 
     // 이미지 다운로드 및 DB 저장
     imagePromises.push(
-      downloadFileAndSaveDB(chidx, "image", fileUrl, filename, downloadDir)
+      downloadFileAndSaveDB(chidx, "image", src, filename, downloadDir)
         .then((result) => {
           // img src 경로를 로컬 파일명으로 변경
           $img.attr("src", result.filename);
@@ -195,26 +169,15 @@ async function updateMenuDownloadStatus(chidx, isSuccess, errorMessage = null) {
 async function parseAndSaveCampusMenu(chidx, action) {
   try {
     const url = `${BASE_URL}/Home/BBSView.mbz?action=${action}&schIdx=${chidx}`;
-    const { data: html } = await axios.get(url, { headers });
-    const $ = cheerio.load(html);
 
-    // 본문 영역 추출
-    let boardContent = $("#board_item_list");
-    if (!boardContent.length || !boardContent.html() || !boardContent.text().trim()) {
-      boardContent = $(".bbs-view-content");
-    }
-
-    if (!boardContent.length) {
-      logger.warn(`본문 영역을 찾을 수 없음 [${chidx}]`);
-      await updateMenuDownloadStatus(chidx, false, "본문 영역을 찾을 수 없음");
-      throw new Error("본문 영역을 찾을 수 없습니다.");
-    }
+    // 공통 크롤링 함수 사용
+    const { $, boardContent } = await crawlHoseoNotice(url, `메뉴 상세 [${chidx}]`);
 
     logger.info(`📥 처리 시작 [${chidx}]`);
 
     // 저장 디렉토리 생성
     const menuDownloadDir = path.join(DOWNLOAD_ROOT, String(chidx));
-    await fs.ensureDir(menuDownloadDir);
+    await ensureDirectoryExists(menuDownloadDir);
 
     // 첨부파일 처리
     console.log(`[${chidx}] 첨부파일 처리 중...`);
@@ -229,9 +192,7 @@ async function parseAndSaveCampusMenu(chidx, action) {
 
     // HTML 파일 저장 (수정된 이미지 경로 포함)
     const htmlFilePath = path.join(menuDownloadDir, `${chidx}.html`);
-    await fs.writeFile(htmlFilePath, boardContent.html(), {
-      encoding: "utf-8",
-    });
+    await saveHtmlFile(boardContent.html(), `메뉴 ${chidx}`, htmlFilePath);
 
     // JSON 메타데이터 저장
     const jsonResult = {
@@ -242,7 +203,7 @@ async function parseAndSaveCampusMenu(chidx, action) {
     };
 
     const jsonFilePath = path.join(menuDownloadDir, `${chidx}_detail.json`);
-    await fs.writeFile(jsonFilePath, JSON.stringify(jsonResult, null, 2), "utf-8");
+    await saveJsonFile(jsonResult, jsonFilePath);
 
     // DB에 완료 상태 업데이트
     await updateMenuDownloadStatus(chidx, true);

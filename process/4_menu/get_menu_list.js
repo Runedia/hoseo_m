@@ -1,8 +1,7 @@
 require("module-alias/register");
 
-const axios = require("axios");
-const cheerio = require("cheerio");
 const pool = require("@root/utils/db");
+const { crawlWebPage } = require("@root/utils/process/crawler");
 
 // 탭 이름과 action 매핑
 const TAB_ACTIONS = {
@@ -10,8 +9,20 @@ const TAB_ACTIONS = {
   아산: "MAPP_2312012409",
 };
 
+// 메뉴 설정
+const MENU_CONFIG = {
+  baseUrl: "https://www.hoseo.ac.kr/Home/BBSList.mbz",
+  viewBaseUrl: "http://www.hoseo.ac.kr/Home/BBSView.mbz",
+  headers: {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+      "AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Chrome/124.0.0.0 Safari/537.36",
+  },
+};
+
 function changeLink(chidx, action) {
-  return `http://www.hoseo.ac.kr/Home/BBSView.mbz?action=${action}&schIdx=${chidx}`;
+  return `${MENU_CONFIG.viewBaseUrl}?action=${action}&schIdx=${chidx}`;
 }
 
 async function parsePage($, tabName, action) {
@@ -56,25 +67,19 @@ async function insertMenuItem(action, menuItem) {
 }
 
 async function fetchMenuItems(tabName, action) {
-  const url = "https://www.hoseo.ac.kr/Home/BBSList.mbz";
-  const headers = {
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-      "AppleWebKit/537.36 (KHTML, like Gecko) " +
-      "Chrome/124.0.0.0 Safari/537.36",
-  };
-
   let maxPage = 1;
 
   for (let page = 1; page <= maxPage; page++) {
-    const params = {
-      action: action,
-      pageIndex: page,
-    };
+    const url = `${MENU_CONFIG.baseUrl}?action=${action}&pageIndex=${page}`;
 
     try {
-      const response = await axios.get(url, { params, headers });
-      const html = response.data;
+      // 공통 크롤링 함수 사용
+      const html = await crawlWebPage(url, {
+        description: `${tabName} 메뉴 목록 (페이지 ${page})`,
+        headers: MENU_CONFIG.headers,
+      });
+
+      const cheerio = require("cheerio");
       const $ = cheerio.load(html);
 
       if (page === 1) {

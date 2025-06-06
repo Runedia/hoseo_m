@@ -1,13 +1,15 @@
-const path = require("path");
+require("module-alias/register");
+
 const {
-  executeCrawlingProcess,
   processMultipleTypes,
   validateConfig,
   getAvailableTypes: getAvailableTypesUtil,
   addConfig,
+  crawlHoseoEduGuide,
+  printCrawlingSummary,
   OUTPUT_DIR,
-} = require("./utils/crawler");
-const { parseToStructuredJSON, parseBasicData } = require("./utils/parser");
+} = require("@root/utils/process/process");
+const { parseToStructuredJSON } = require("@root/utils/process/parser");
 
 /**
  * 호서대학교 학적 통합 크롤러
@@ -18,38 +20,51 @@ const { parseToStructuredJSON, parseBasicData } = require("./utils/parser");
 const RECORD_CONFIGS = {
   test: {
     name: "시험",
-    url: "http://www.hoseo.ac.kr/Home/Contents.mbz?action=MAPP_1708230107",
+    url: "http://www.hoseo.ac.kr/Home/Contents.mbz?action=MAPP_1708230096",
     fileName: "시험",
     description: "시험",
+    excludeItems: ["온라인 강의 참여율"], // 시험 관련에서 제외할 항목
   },
-  evaluation: {
-    name: "평가",
-    url: "http://www.hoseo.ac.kr/Home/Contents.mbz?action=MAPP_1708230108",
-    fileName: "평가",
-    description: "평가",
-    excludeItems: ["평균 성적산출"], // 제외할 항목들
+  grade: {
+    name: "성적",
+    url: "http://www.hoseo.ac.kr/Home/Contents.mbz?action=MAPP_1708230102",
+    fileName: "성적",
+    description: "성적",
   },
-  warning: {
-    name: "학사경고",
-    url: "http://www.hoseo.ac.kr/Home/Contents.mbz?action=MAPP_1708230109",
-    fileName: "학사경고",
-    description: "학사경고",
+  leave: {
+    name: "휴학",
+    url: "http://www.hoseo.ac.kr/Home/Contents.mbz?action=MAPP_1708230100",
+    fileName: "휴학",
+    description: "휴학",
   },
-  change_major: {
-    name: "전공변경",
-    url: "http://www.hoseo.ac.kr/Home/Contents.mbz?action=MAPP_1708230110",
-    fileName: "전공변경",
-    description: "전공변경",
+  return: {
+    name: "복학",
+    url: "http://www.hoseo.ac.kr/Home/Contents.mbz?action=MAPP_1708230101",
+    fileName: "복학",
+    description: "복학",
+  },
+  graduation: {
+    name: "졸업",
+    url: "http://www.hoseo.ac.kr/Home/Contents.mbz?action=MAPP_1708230099",
+    fileName: "졸업",
+    description: "졸업",
   },
 };
 
 /**
  * 학적 HTML 크롤링 및 저장
- * @param {string|string[]} type - 학적 타입 ('test', 'evaluation', 'warning', 'change_major') 또는 배열
+ * @param {string|string[]} type - 학적 타입 ('test', 'grade', 'leave', 'return', 'graduation') 또는 배열
  * @returns {Promise<Object|Object[]>} 크롤링 결과
  */
 async function getRecord(type = "test") {
-  return await processMultipleTypes(type, RECORD_CONFIGS, processSingleRecord);
+  const result = await processMultipleTypes(type, RECORD_CONFIGS, processSingleRecord);
+
+  // 배열 결과인 경우 요약 출력
+  if (Array.isArray(result)) {
+    printCrawlingSummary(result, "학적 크롤링");
+  }
+
+  return result;
 }
 
 /**
@@ -61,23 +76,16 @@ async function processSingleRecord(type) {
   // 설정 확인
   const config = validateConfig(type, RECORD_CONFIGS, "학적");
 
-  // 공통 크롤링 프로세스 실행
-  return await executeCrawlingProcess(config, type, parseRecordToStructuredJSON);
-}
+  // 제외할 항목들
+  const excludeItems = config.excludeItems || [];
 
-/**
- * 학적 전용 파싱 함수 (공통 파서 래핑)
- * @param {string} htmlContent - HTML 콘텐츠
- * @param {string} type - 학적 타입
- * @returns {Object} 파싱된 데이터
- */
-function parseRecordToStructuredJSON(htmlContent, type) {
-  return parseToStructuredJSON(htmlContent, type, RECORD_CONFIGS);
+  // 공통 크롤링 프로세스 실행
+  return await crawlHoseoEduGuide(type, RECORD_CONFIGS, excludeItems);
 }
 
 /**
  * 사용 가능한 학적 타입 목록 반환
- * @returns {Object} 학적 설정 정보
+ * @returns {Array} 학적 설정 정보
  */
 function getAvailableTypes() {
   return getAvailableTypesUtil(RECORD_CONFIGS);
@@ -93,10 +101,14 @@ function addRecordConfig(type, config) {
 }
 
 /**
- * 기존 파싱 함수 (호환성 유지)
+ * 학적 전용 파싱 함수 (호환성 유지)
+ * @param {string} htmlContent - HTML 콘텐츠
+ * @param {string} type - 학적 타입
+ * @returns {Object} 파싱된 데이터
  */
-function parseRecordData(htmlContent) {
-  return parseBasicData(htmlContent);
+function parseRecordToStructuredJSON(htmlContent, type) {
+  const excludeItems = RECORD_CONFIGS[type]?.excludeItems || [];
+  return parseToStructuredJSON(htmlContent, type, excludeItems);
 }
 
 // 직접 실행 시
@@ -109,6 +121,13 @@ if (require.main === module) {
     getAvailableTypes().forEach((item) => {
       console.log(`  - ${item.type}: ${item.description}`);
     });
+    console.log("\n🚀 사용법:");
+    console.log("  node get_record.js test         # 시험만");
+    console.log("  node get_record.js grade        # 성적만");
+    console.log("  node get_record.js leave        # 휴학만");
+    console.log("  node get_record.js return       # 복학만");
+    console.log("  node get_record.js graduation   # 졸업만");
+    console.log("  node get_record.js all          # 모든 학적 정보");
     return;
   }
 
@@ -120,23 +139,15 @@ if (require.main === module) {
   getRecord(targetTypes)
     .then((result) => {
       if (Array.isArray(result)) {
-        console.log("🎉 전체 크롤링 완료!");
-        result.forEach((item, index) => {
-          if (item.success) {
-            console.log(`${index + 1}. ${item.config.description}: ✅`);
-            console.log(`   섹션 수: ${item.stats.structuredSections}개`);
-          } else {
-            console.log(`${index + 1}. ${item.type}: ❌ ${item.error}`);
-          }
-        });
+        console.log("🎉 전체 학적 크롤링 완료!");
       } else {
-        console.log("🎉 크롤링 성공!");
+        console.log("🎉 학적 크롤링 성공!");
         console.log("결과:", result.stats);
         console.log(`📊 구조화된 데이터 샘플:`, Object.keys(result.structuredData).slice(0, 3));
       }
     })
     .catch((error) => {
-      console.error("💥 크롤링 실패:", error.message);
+      console.error("💥 학적 크롤링 실패:", error.message);
       process.exit(1);
     });
 }
@@ -145,7 +156,6 @@ module.exports = {
   getRecord,
   getAvailableTypes,
   addRecordConfig,
-  parseRecordData,
   parseRecordToStructuredJSON,
   RECORD_CONFIGS,
   OUTPUT_DIR,

@@ -116,10 +116,10 @@ GET /shuttle/schedule?date=2025-01-20&route=1
 ```json
 // 원본 데이터
 {
-  "bus_001": { "pos1": "07:30", "pos2": "07:35", ..., "pos7": "08:15" }, // ✅ 모든 pos 완성
-  "bus_002": { "pos1": "", "pos2": "08:35", ..., "pos7": "09:15" },      // ❌ pos1 비어있음 → 제외
-  "bus_003": { "pos1": "08:30", "pos2": "08:35", ..., "pos7": "09:15" }, // ✅ 모든 pos 완성
-  "bus_004": { "pos1": "09:30", "pos2": "", ..., "pos7": "10:15" }       // ❌ pos2 비어있음 → 제외
+  "1": { "pos1": "07:30", "pos2": "07:35", ..., "pos7": "08:15" }, // ✅ 모든 pos 완성
+  "2": { "pos1": "", "pos2": "08:35", ..., "pos7": "09:15" },      // ❌ pos1 비어있음 → 제외
+  "3": { "pos1": "08:30", "pos2": "08:35", ..., "pos7": "09:15" }, // ✅ 모든 pos 완성
+  "4": { "pos1": "09:30", "pos2": "", ..., "pos7": "10:15" }       // ❌ pos2 비어있음 → 제외
 }
 
 // 필터링 후 응답
@@ -153,6 +153,14 @@ GET /shuttle/schedule?date=2025-01-20&route=1
 }
 ```
 
+#### Error Response (500)
+```json
+{
+  "success": false,
+  "message": "서버 내부 오류가 발생했습니다."
+}
+```
+
 ---
 
 ### 2. 셔틀버스 상세 시간표 조회
@@ -167,14 +175,13 @@ GET /shuttle/schedule?date=2025-01-20&route=1
 |-----------|------|----------|-------------|
 | `date` | string | ✅ | 조회 날짜 (YYYY-MM-DD 형식) |
 | `route` | string | ✅ | 노선 번호 (1: 아산→천안, 2: 천안→아산) |
-| `schedule` | string | ✅ | **원본 버스 번호** (origin_idx 값 사용) |
+| `schedule` | string | ✅ | **원본 버스 번호** (JSON 파일의 키 값) |
 
-⚠️ **중요**: `schedule` 파라미터는 `/schedule` API 응답의 `origin_idx` 값을 사용해야 합니다.
+⚠️ **중요**: `schedule` 파라미터는 JSON 파일의 원본 키 값을 사용합니다.
 
 #### Example Request
 ```bash
-# /schedule에서 응답받은 origin_idx 값 사용
-GET /shuttle/schedule/detail?date=2025-01-20&route=1&schedule=bus_001
+GET /shuttle/schedule/detail?date=2025-01-20&route=1&schedule=1
 ```
 
 #### Success Response (200)
@@ -185,7 +192,7 @@ GET /shuttle/schedule/detail?date=2025-01-20&route=1&schedule=bus_001
     "date": "2025-01-20",
     "dayType": "weekday",
     "route": "1",
-    "scheduleNumber": "bus_001",
+    "scheduleNumber": "1",
     "detail": {
       "pos1": "07:30",
       "pos2": "07:35",
@@ -200,74 +207,29 @@ GET /shuttle/schedule/detail?date=2025-01-20&route=1&schedule=bus_001
 }
 ```
 
+#### Error Response (400)
+```json
+{
+  "success": false,
+  "message": "날짜(date), 노선 번호(route), 스케줄 번호(schedule)가 필요합니다."
+}
+```
+
 #### Error Response (404)
 ```json
 {
   "success": false,
-  "message": "스케줄 번호 bus_999을(를) 찾을 수 없습니다."
+  "message": "스케줄 번호 999을(를) 찾을 수 없습니다."
 }
 ```
 
----
-
-### 3. 캐시 상태 확인 (디버깅용)
-
-시스템의 시간표 캐시 상태를 확인합니다.
-
-**Endpoint:** `GET /shuttle/cache/status`
-
-#### Example Request
-```bash
-GET /shuttle/cache/status
-```
-
-#### Success Response (200)
+#### Error Response (500)
 ```json
 {
-  "success": true,
-  "data": {
-    "1_weekday": {
-      "loaded": true,
-      "scheduleCount": 15,
-      "isDefault": false
-    },
-    "1_saturday": {
-      "loaded": true,
-      "scheduleCount": 8,
-      "isDefault": false
-    },
-    "1_sunday": {
-      "loaded": true,
-      "scheduleCount": 5,
-      "isDefault": false
-    },
-    "2_weekday": {
-      "loaded": true,
-      "scheduleCount": 15,
-      "isDefault": false
-    },
-    "2_saturday": {
-      "loaded": true,
-      "scheduleCount": 8,
-      "isDefault": false
-    },
-    "2_sunday": {
-      "loaded": true,
-      "scheduleCount": 5,
-      "isDefault": false
-    }
-  },
-  "message": "캐시 상태 조회 성공"
+  "success": false,
+  "message": "서버 내부 오류가 발생했습니다."
 }
 ```
-
-#### 캐시 상태 필드 설명
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `loaded` | boolean | 캐시에 데이터가 로드되었는지 여부 |
-| `scheduleCount` | number | 로드된 시간표 개수 (필터링 전 전체 개수) |
-| `isDefault` | boolean | 기본값 데이터인지 여부 (파일 로딩 실패 시 true) |
 
 ---
 
@@ -373,7 +335,7 @@ assets/
     "pos6": "",
     "pos7": ""
   },
-  "bus_001": {
+  "1": {
     "pos1": "07:30",
     "pos2": "07:35", 
     "pos3": "07:40",
@@ -382,7 +344,7 @@ assets/
     "pos6": "08:10",
     "pos7": "08:15"
   },
-  "bus_002": {
+  "2": {
     "pos1": "",      // ❌ 비어있음 → 필터링으로 제외됨
     "pos2": "08:35", 
     "pos3": "08:40",
@@ -390,6 +352,47 @@ assets/
     "pos5": "09:00",
     "pos6": "09:10",
     "pos7": "09:15"
+  }
+}
+```
+
+---
+
+## 메모리 캐싱 시스템
+
+### 캐싱 로직
+
+서버 시작 시 모든 시간표 데이터를 메모리에 로드합니다:
+
+```javascript
+// 캐시 키 구조: "{route}_{dayType}"
+const cacheKeys = [
+  "1_weekday", "1_saturday", "1_sunday",
+  "2_weekday", "2_saturday", "2_sunday"
+];
+```
+
+### 로딩 프로세스
+
+1. **파일 경로 매핑**: 노선별, 요일별 파일명 자동 매핑
+2. **동기 로딩**: `fs.readFileSync`로 모든 파일 로드
+3. **에러 처리**: 로딩 실패 시 기본값(빈 시간표) 설정
+4. **상태 출력**: 성공/실패 개수 콘솔 로그
+
+### 기본값 구조
+
+파일 로딩 실패 시 사용되는 기본값:
+
+```json
+{
+  "error": {
+    "pos1": "",
+    "pos2": "",
+    "pos3": "",
+    "pos4": "",
+    "pos5": "",
+    "pos6": "",
+    "pos7": ""
   }
 }
 ```
@@ -418,7 +421,7 @@ Object.entries(data.data.schedule).forEach(([busNumber, schedule]) => {
 ```javascript
 // 3. 상세 조회 시 origin_idx 사용
 const busNumber = "1"; // 사용자가 선택한 연속 번호
-const originIdx = data.data.schedule[busNumber].origin_idx; // "bus_001"
+const originIdx = data.data.schedule[busNumber].origin_idx; // "1"
 
 const detailResponse = await fetch(
   `/shuttle/schedule/detail?date=2025-01-20&route=1&schedule=${originIdx}`
@@ -438,13 +441,18 @@ API는 입력된 날짜를 기준으로 다음과 같이 요일을 판별합니�
 // JavaScript Date 객체 기준
 // 일요일=0, 월요일=1, 화요일=2, ..., 토요일=6
 
-if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-  return "weekday";  // 평일 (월~금)
-} else if (dayOfWeek === 6) {
-  return "saturday"; // 토요일
-} else {
-  return "sunday";   // 일요일
-}
+const getDayType = (dateString) => {
+  const date = new Date(dateString);
+  const dayOfWeek = date.getDay();
+  
+  if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+    return "weekday";  // 평일 (월~금)
+  } else if (dayOfWeek === 6) {
+    return "saturday"; // 토요일
+  } else {
+    return "sunday";   // 일요일
+  }
+};
 ```
 
 ---
@@ -453,6 +461,7 @@ if (dayOfWeek >= 1 && dayOfWeek <= 5) {
 
 | HTTP Status | Error Type | Description |
 |-------------|------------|-------------|
+| 200 | OK | 요청 성공 |
 | 400 | Bad Request | 필수 파라미터 누락, 잘못된 날짜 형식, 잘못된 노선 번호 |
 | 404 | Not Found | 요청한 스케줄 번호를 찾을 수 없음 |
 | 500 | Internal Server Error | 서버 내부 오류, 파일 읽기 실패 등 |
@@ -478,13 +487,8 @@ curl "http://localhost:3000/shuttle/schedule?date=2025-01-26&route=1"
 
 ### 4. 특정 버스 상세 시간표 조회
 ```bash
-# origin_idx 값 사용
-curl "http://localhost:3000/shuttle/schedule/detail?date=2025-01-20&route=1&schedule=bus_001"
-```
-
-### 5. 캐시 상태 확인
-```bash
-curl "http://localhost:3000/shuttle/cache/status"
+# 원본 버스 번호 사용
+curl "http://localhost:3000/shuttle/schedule/detail?date=2025-01-20&route=1&schedule=1"
 ```
 
 ---
@@ -531,9 +535,11 @@ curl "http://localhost:3000/shuttle/cache/status"
 
 4. **노선 제한**: 현재 노선 1번(아산→천안), 2번(천안→아산)만 지원됩니다.
 
-5. **detail API 파라미터**: detail API의 `schedule` 파라미터는 연속 번호가 아닌 `origin_idx` 값을 사용해야 합니다.
+5. **detail API 파라미터**: detail API의 `schedule` 파라미터는 JSON 파일의 원본 키 값을 사용합니다.
 
 6. **필터링 로직**: 불완전한 시간표는 자동으로 제외되므로, 원본 데이터와 응답 데이터의 개수가 다를 수 있습니다.
+
+7. **캐시 상태 확인 API 제거**: 기존 `/cache/status` 엔드포인트는 현재 코드에서 제거되었습니다.
 
 ---
 
@@ -549,10 +555,10 @@ curl "http://localhost:3000/shuttle/cache/status"
 - 필터링을 통한 불필요한 데이터 제거
 - 연속 번호로 일관된 인터페이스 제공
 
-### **병렬 처리**
-- `Promise.all()`을 사용한 비동기 처리 (필요시)
-- 캐시 기반 즉시 응답
+### **로딩 상태 모니터링**
+- 서버 시작 시 로딩 성공/실패 상태 출력
+- 파일별 상세한 로그 메시지 제공
 
 ---
 
-*Last Updated: 2025-06-03*
+*Last Updated: 2025-06-06*

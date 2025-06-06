@@ -1,71 +1,36 @@
 require("module-alias/register");
 
-const axios = require("axios");
-const cheerio = require("cheerio");
-const fs = require("fs-extra");
-const path = require("path");
+const { crawlWebPage, downloadFile, DEFAULT_HEADERS } = require("@root/utils/process/crawler");
+const { safeFilename, ensureDirectoryExists, pathToUrl } = require("@root/utils/process/file");
 const pool = require("@root/utils/db");
 const { logger } = require("@root/utils/logger");
+const cheerio = require("cheerio");
+const path = require("path");
+const fs = require("fs-extra");
+
+/**
+ * 호서대학교 공지사항 다운로드 공통 유틸리티
+ */
 
 const BASE_URL = "https://www.hoseo.ac.kr";
 const DOWNLOAD_ROOT = path.resolve(process.cwd(), "download_notice");
-const headers = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-    "AppleWebKit/537.36 (KHTML, like Gecko) " +
-    "Chrome/124.0.0.0 Safari/537.36",
-  Accept: "*/*",
-  Referer: BASE_URL + "/",
-};
 
-// 파일명 안전 변환 함수
-function safeFilename(name, fallbackExt = ".bin") {
-  if (!name || name.trim() === "") {
-    return `file_${Date.now()}${fallbackExt}`;
-  }
-
-  let ext = path.extname(name);
-  if (!ext) ext = fallbackExt;
-
-  let base = name.replace(/[\\/:*?"<>|]+/g, "_").trim();
-  if (!base.endsWith(ext)) base += ext;
-
-  return base;
-}
-
-// 파일 다운로드 함수
-async function downloadFile(fileUrl, destPath) {
-  if (fileUrl.startsWith("/")) {
-    fileUrl = BASE_URL + fileUrl;
-  }
-
-  const writer = fs.createWriteStream(destPath);
-  const response = await axios({
-    url: fileUrl,
-    method: "GET",
-    responseType: "stream",
-    headers,
-  });
-
-  response.data.pipe(writer);
-
-  return new Promise((resolve, reject) => {
-    writer.on("finish", resolve);
-    writer.on("error", reject);
-  });
-}
-
-// 파일 다운로드 + DB 저장
+/**
+ * 파일 다운로드 + DB 저장
+ */
 async function downloadFileAndSaveDB(noticeNum, fileType, fileUrl, originName, downloadDir) {
   const filenameSafe = safeFilename(originName, fileType === "image" ? ".jpg" : ".pdf");
   const localFilePath = path.join(downloadDir, filenameSafe);
-  const relativeFilePath = path.relative(process.cwd(), localFilePath);
 
   // URL용 경로 (슬래시로 변환)
-  const urlPath = relativeFilePath.replace(/\\/g, "/");
+  const urlPath = pathToUrl(localFilePath);
 
-  // 파일 다운로드
-  await downloadFile(fileUrl, localFilePath);
+  // 파일 다운로드 (공통 유틸리티 사용)
+  const fullUrl = fileUrl.startsWith("/") ? BASE_URL + fileUrl : fileUrl;
+  await downloadFile(fullUrl, localFilePath, {
+    headers: DEFAULT_HEADERS,
+    createDir: true,
+  });
 
   // DB 저장(tbl_noticefile)
   await pool.execute(
@@ -87,7 +52,9 @@ async function downloadFileAndSaveDB(noticeNum, fileType, fileUrl, originName, d
   };
 }
 
-// 첨부파일 처리 함수
+/**
+ * 첨부파일 처리 함수
+ */
 async function processAttachments($, chidx, downloadDir) {
   const attachments = [];
   const downloadPromises = [];
@@ -126,7 +93,9 @@ async function processAttachments($, chidx, downloadDir) {
   return attachments;
 }
 
-// 이미지 처리 함수 (assets 정보도 수집)
+/**
+ * 이미지 처리 함수 (assets 정보도 수집)
+ */
 async function processImages($, boardElement, chidx, downloadDir) {
   const imagePromises = [];
   const assets = [];
@@ -175,7 +144,9 @@ async function processImages($, boardElement, chidx, downloadDir) {
   return assets;
 }
 
-// 공지사항 다운로드 상태 업데이트
+/**
+ * 공지사항 다운로드 상태 업데이트
+ */
 async function updateNoticeDownloadStatus(chidx, isSuccess, errorMessage = null) {
   try {
     await pool.execute(
@@ -191,11 +162,19 @@ async function updateNoticeDownloadStatus(chidx, isSuccess, errorMessage = null)
   }
 }
 
-// 통합 공지사항 처리 함수
+/**
+ * 통합 공지사항 처리 함수
+ */
 async function parseAndSaveNotice(chidx) {
   try {
     const url = `${BASE_URL}/Home/BBSView.mbz?action=MAPP_1708240139&schIdx=${chidx}`;
-    const { data: html } = await axios.get(url, { headers });
+
+    // 공통 크롤러 사용
+    const html = await crawlWebPage(url, {
+      description: `공지사항 ${chidx}`,
+      headers: DEFAULT_HEADERS,
+    });
+
     const $ = cheerio.load(html);
 
     // 본문 영역 추출
@@ -214,7 +193,7 @@ async function parseAndSaveNotice(chidx) {
 
     // 저장 디렉토리 생성
     const noticeDownloadDir = path.join(DOWNLOAD_ROOT, String(chidx));
-    await fs.ensureDir(noticeDownloadDir);
+    ensureDirectoryExists(noticeDownloadDir);
 
     // 첨부파일 처리
     console.log(`[${chidx}] 첨부파일 처리 중...`);
@@ -258,7 +237,9 @@ async function parseAndSaveNotice(chidx) {
   }
 }
 
-// 메인 실행 함수
+/**
+ * 메인 실행 함수
+ */
 async function main() {
   try {
     // DB에서 아직 다운로드되지 않은 공지사항 목록 가져오기
@@ -314,6 +295,9 @@ if (require.main === module) {
 
 module.exports = {
   parseAndSaveNotice,
+  processAttachments,
+  processImages,
+  updateNoticeDownloadStatus,
+  downloadFileAndSaveDB,
   main,
 };
-

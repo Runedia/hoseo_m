@@ -143,27 +143,6 @@ router.get("/:campus/image", (req, res) => {
   }
 });
 
-// 캐시 상태 확인 API (디버깅용)
-router.get("/cache/status", (req, res) => {
-  const cacheStatus = {};
-
-  Object.keys(CAMPUS_INFO).forEach((campusKey) => {
-    const data = campusDataCache[campusKey];
-    const campusInfo = CAMPUS_INFO[campusKey];
-
-    cacheStatus[campusKey] = {
-      campusName: campusInfo.name,
-      loaded: !!data,
-      isDefault: data && data.hasOwnProperty("error"),
-      dataKeys: data ? Object.keys(data) : [],
-    };
-  });
-
-  res.json({
-    success: true,
-    data: cacheStatus,
-    message: "캠퍼스 데이터 캐시 상태 조회 성공",
-  });
-});
+// 캐시 상태 확인 API 제거됨 (디버깅용, 미사용)
 
 module.exports = router;

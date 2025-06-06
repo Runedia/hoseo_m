@@ -1,12 +1,24 @@
 require("module-alias/register");
 
-const axios = require("axios");
-const cheerio = require("cheerio");
-const fs = require("fs-extra");
-const path = require("path");
+const pool = require("@root/utils/db");
+const { crawlWebPage } = require("@root/utils/process/crawler");
 
 // 호서대학교 학부(과) 홈페이지 URL
 const DEPARTMENT_URL = "http://www.hoseo.ac.kr/Home/Contents.mbz?action=MAPP_2210212173";
+
+// 학과 목록 설정
+const DEPARTMENT_CONFIG = {
+  baseUrl: DEPARTMENT_URL,
+  headers: {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.8,en-US;q=0.5,en;q=0.3",
+    "Accept-Encoding": "gzip, deflate",
+    Connection: "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+  },
+};
 
 /**
  * 링크에서 action 파라미터와 홈페이지 URL 추출
@@ -136,8 +148,11 @@ function parseDepartmentInfo($) {
  * JSON 파일로 저장
  */
 async function saveDepartmentJson(departments) {
+  const { saveJsonFile, ensureDirectoryExists } = require("@root/utils/process/file");
+  const path = require("path");
+
   const assetsPath = path.join(process.cwd(), "assets", "static");
-  await fs.ensureDir(assetsPath);
+  await ensureDirectoryExists(assetsPath);
 
   const jsonPath = path.join(assetsPath, "departments.json");
 
@@ -175,7 +190,7 @@ async function saveDepartmentJson(departments) {
     colleges: groupedDepartments,
   };
 
-  await fs.writeJson(jsonPath, jsonData, { spaces: 2 });
+  await saveJsonFile(jsonPath, jsonData);
   console.log(`📄 JSON 파일 저장 완료: ${jsonPath}`);
   return jsonPath;
 }
@@ -184,8 +199,11 @@ async function saveDepartmentJson(departments) {
  * 간단한 구조의 JSON도 함께 저장 (API 응답용)
  */
 async function saveSimpleDepartmentJson(departments) {
+  const { saveJsonFile, ensureDirectoryExists } = require("@root/utils/process/file");
+  const path = require("path");
+
   const assetsPath = path.join(process.cwd(), "assets", "static");
-  await fs.ensureDir(assetsPath);
+  await ensureDirectoryExists(assetsPath);
 
   const jsonPath = path.join(assetsPath, "departments_simple.json");
 
@@ -200,7 +218,7 @@ async function saveSimpleDepartmentJson(departments) {
     isTrack: dept.isTrack,
   }));
 
-  await fs.writeJson(jsonPath, simpleData, { spaces: 2 });
+  await saveJsonFile(jsonPath, simpleData);
   console.log(`📄 간단 JSON 파일 저장 완료: ${jsonPath}`);
   return jsonPath;
 }
@@ -209,23 +227,17 @@ async function saveSimpleDepartmentJson(departments) {
  * 학과 정보 크롤링 메인 함수
  */
 async function extractDepartmentList() {
-  const headers = {
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "ko-KR,ko;q=0.8,en-US;q=0.5,en;q=0.3",
-    "Accept-Encoding": "gzip, deflate",
-    Connection: "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-  };
-
   try {
     console.log("🚀 호서대학교 학과 정보 크롤링 시작");
     console.log(`📡 URL: ${DEPARTMENT_URL}`);
 
-    // 웹페이지에서 HTML 가져오기
-    const response = await axios.get(DEPARTMENT_URL, { headers });
-    const htmlContent = response.data;
+    // 공통 크롤링 함수 사용
+    const htmlContent = await crawlWebPage(DEPARTMENT_URL, {
+      description: "호서대학교 학과 목록",
+      headers: DEPARTMENT_CONFIG.headers,
+    });
+
+    const cheerio = require("cheerio");
     const $ = cheerio.load(htmlContent);
 
     console.log("📄 HTML 페이지 로드 완료");
@@ -280,10 +292,6 @@ async function extractDepartmentList() {
     return departments;
   } catch (err) {
     console.error("❌ 학과 정보 크롤링 중 오류 발생:", err.message);
-    if (err.response) {
-      console.error(`   HTTP 상태: ${err.response.status}`);
-      console.error(`   응답 헤더:`, err.response.headers);
-    }
     throw err;
   }
 }
