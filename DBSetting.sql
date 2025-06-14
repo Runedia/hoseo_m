@@ -62,23 +62,6 @@ CREATE TABLE TBL_NoticeFile (
     INDEX idx_file_type (file_type)
 ) COMMENT = '공지사항 첨부파일';
 
--- 공지사항 뷰 (카테고리명 포함)
-CREATE VIEW vw_notice AS
-SELECT 
-    a.idx,
-    a.type,
-    b.label as category_name,
-    a.chidx,
-    a.title,
-    a.link,
-    a.author,
-    a.create_dt,
-    a.download_completed,
-    a.download_date,
-    a.download_error
-FROM TBL_Notice a 
-JOIN TBL_NoticeType b ON a.type = b.categoryCode;
-
 -- =====================================================
 -- 2. 메뉴(식단) 관련 테이블
 -- =====================================================
@@ -132,19 +115,19 @@ CREATE TABLE TBL_BatchInfo (
 -- =====================================================
 
 -- 테이블 생성 확인
-SELECT 
-    TABLE_NAME as '테이블명', 
+SELECT
+    TABLE_NAME as '테이블명',
     TABLE_COMMENT as '설명',
     TABLE_ROWS as '행수'
-FROM information_schema.TABLES 
-WHERE TABLE_SCHEMA = 'hoseo_m' 
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = 'hoseo_m'
 ORDER BY TABLE_NAME;
 
 -- 뷰 생성 확인
-SELECT 
+SELECT
     TABLE_NAME as '뷰명',
     TABLE_COMMENT as '설명'
-FROM information_schema.VIEWS 
+FROM information_schema.VIEWS
 WHERE TABLE_SCHEMA = 'hoseo_m';
 
 SELECT '호서대학교 크롤링 프로그램 DB 초기화가 완료되었습니다.' as 'MESSAGE';
